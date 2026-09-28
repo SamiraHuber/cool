@@ -1,0 +1,34 @@
+# scaled_distractor_flat_24room: 24-room world with FLATTENED room-activity
+# distribution. No dominant hotspot: kitchen / lounge / meeting rooms /
+# offices are all similarly attractive (active rooms ~equally active),
+# while the utility rooms (storage, printer room, server room) are
+# deliberately quiet. Activity AMOUNT kept near base — only the
+# distribution changes vs. scaled_distractor_24room (4.0x kitchen/MR1).
+extends = "scaled_base_24room.toml"
+name = "scaled_distractor_flat_24room"
+
+[output]
+dir = "data/curiosity/datasets/scaled_distractor_flat_24room"
+
+# equal mobility across active room types; utility rooms calmer
+[decisions.p_move.base]
+office = 0.55
+social = 0.55
+meeting = 0.55
+utility = 0.30
+
+# utility rooms deliberately less active
+[decisions.p_move.room_multipliers]
+storage = 0.3
+"printer room" = 0.3
+"server room" = 0.3
+
+# flattened affinities: every common destination similarly attractive
+# (base: home 2.0, kitchen 2.1, meeting 0.3, office_other 0.0)
+[decisions.base_affinity]
+home = 1.2
+office_other = 0.4
+kitchen = 1.2
+meeting = 1.2
+storage = -0.8
+utility = -0.8

@@ -1,0 +1,472 @@
+# scaled_24room: one large single-floor office (no wings), 24 rooms, 40 people.
+# 16 offices (1-4 people each), 3 meeting rooms, kitchen, lounge,
+# storage, printer room, server room. Episodes inherited from intent_cued,
+# scaled up via [episodes] per_day below.
+extends = "intent_cued.toml"
+name = "scaled_24room"
+
+[output]
+dir = "data/curiosity/datasets/scaled_24room"
+
+# More episodes per day than the 6/12-room worlds (40 people, 24 rooms).
+[episodes]
+per_day = [8, 12]
+
+# Replace the whole world subtree (do not merge with the 6-room world).
+[world]
+__replace__ = true
+
+# Bigger floor than the 12-room world: default distance 3, exceptions for
+# adjacent / clustered rooms.
+[world.distances]
+default = 3
+[[world.distances.exceptions]]
+pair = ["office 1", "office 2"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 3", "office 4"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 5", "office 6"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 7", "office 8"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 9", "office 10"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 11", "office 12"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 13", "office 14"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 15", "office 16"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["kitchen", "lounge"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["kitchen", "office 1"]
+d = 2
+[[world.distances.exceptions]]
+pair = ["lounge", "office 16"]
+d = 2
+[[world.distances.exceptions]]
+pair = ["storage", "printer room"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["printer room", "server room"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["meeting room 1", "meeting room 2"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["meeting room 2", "meeting room 3"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["server room", "kitchen"]
+d = 5
+[[world.distances.exceptions]]
+pair = ["server room", "meeting room 1"]
+d = 5
+
+# ---------------------------------------------------------------------------
+# Rooms
+[world.rooms.kitchen]
+type = "social"
+capacity = 12
+fixtures = ["coffee_machine", "fridge", "microwave", "dishwasher"]
+[world.rooms.lounge]
+type = "social"
+capacity = 10
+fixtures = ["sofa", "tv", "bookshelf"]
+[world.rooms.storage]
+type = "utility"
+capacity = 4
+fixtures = ["shelf", "toolbox"]
+[world.rooms."printer room"]
+type = "utility"
+capacity = 3
+fixtures = ["printer", "paper_shelf"]
+[world.rooms."server room"]
+type = "utility"
+capacity = 2
+fixtures = ["server_rack", "ups"]
+
+# 4-person offices
+[world.rooms."office 1"]
+type = "office"
+capacity = 4
+fixtures = ["desk_1", "desk_2", "desk_3", "desk_4"]
+[world.rooms."office 2"]
+type = "office"
+capacity = 4
+fixtures = ["desk_1", "desk_2", "desk_3", "desk_4"]
+[world.rooms."office 3"]
+type = "office"
+capacity = 4
+fixtures = ["desk_1", "desk_2", "desk_3", "desk_4"]
+[world.rooms."office 4"]
+type = "office"
+capacity = 4
+fixtures = ["desk_1", "desk_2", "desk_3", "desk_4"]
+# 3-person offices
+[world.rooms."office 5"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 6"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 7"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 8"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+# 2-person offices
+[world.rooms."office 9"]
+type = "office"
+capacity = 2
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."office 10"]
+type = "office"
+capacity = 2
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."office 11"]
+type = "office"
+capacity = 2
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."office 12"]
+type = "office"
+capacity = 2
+fixtures = ["desk_1", "desk_2"]
+# single offices
+[world.rooms."office 13"]
+type = "office"
+capacity = 1
+fixtures = ["desk_1"]
+[world.rooms."office 14"]
+type = "office"
+capacity = 1
+fixtures = ["desk_1"]
+[world.rooms."office 15"]
+type = "office"
+capacity = 1
+fixtures = ["desk_1"]
+[world.rooms."office 16"]
+type = "office"
+capacity = 1
+fixtures = ["desk_1"]
+
+# meeting rooms: town hall / standard / huddle
+[world.rooms."meeting room 1"]
+type = "meeting"
+capacity = 45
+fixtures = ["projector", "whiteboard", "conference_table"]
+[world.rooms."meeting room 2"]
+type = "meeting"
+capacity = 10
+fixtures = ["screen", "whiteboard", "conference_table"]
+[world.rooms."meeting room 3"]
+type = "meeting"
+capacity = 6
+fixtures = ["screen", "conference_table"]
+
+# ---------------------------------------------------------------------------
+# People: 4x4, 4x3, 4x2, 4x1 per office = 40 people
+[world.people.Alex]
+home = "office 1"
+role = "dev"
+[world.people.Blake]
+home = "office 1"
+role = "dev"
+[world.people.Grace]
+home = "office 1"
+role = "intern"
+[world.people.Aaron]
+home = "office 1"
+role = "qa"
+[world.people.Casey]
+home = "office 2"
+role = "designer"
+[world.people.Dana]
+home = "office 2"
+role = "pm"
+[world.people.Heidi]
+home = "office 2"
+role = "writer"
+[world.people.Bella]
+home = "office 2"
+role = "designer"
+[world.people.Evan]
+home = "office 3"
+role = "dev"
+[world.people.Frank]
+home = "office 3"
+role = "analyst"
+[world.people.Chris]
+home = "office 3"
+role = "dev"
+[world.people.Dora]
+home = "office 3"
+role = "analyst"
+[world.people.Ivan]
+home = "office 4"
+role = "dev"
+[world.people.Judy]
+home = "office 4"
+role = "analyst"
+[world.people.Eli]
+home = "office 4"
+role = "dev"
+[world.people.Fiona]
+home = "office 4"
+role = "researcher"
+[world.people.Karl]
+home = "office 5"
+role = "hardware"
+[world.people.Luna]
+home = "office 5"
+role = "hardware"
+[world.people.Gabe]
+home = "office 5"
+role = "hardware"
+[world.people.Morgan]
+home = "office 6"
+role = "pm"
+[world.people.Nina]
+home = "office 6"
+role = "designer"
+[world.people.Hana]
+home = "office 6"
+role = "pm"
+[world.people.Oscar]
+home = "office 7"
+role = "sales"
+[world.people.Priya]
+home = "office 7"
+role = "sales"
+[world.people.Iris]
+home = "office 7"
+role = "sales"
+[world.people.Quinn]
+home = "office 8"
+role = "dev"
+[world.people.Rosa]
+home = "office 8"
+role = "qa"
+[world.people.Jake]
+home = "office 8"
+role = "dev"
+[world.people.Sam]
+home = "office 9"
+role = "dev"
+[world.people.Tina]
+home = "office 9"
+role = "dev"
+[world.people.Umar]
+home = "office 10"
+role = "researcher"
+[world.people.Vera]
+home = "office 10"
+role = "researcher"
+[world.people.Wade]
+home = "office 11"
+role = "admin"
+[world.people.Xena]
+home = "office 11"
+role = "admin"
+[world.people.Yara]
+home = "office 12"
+role = "writer"
+[world.people.Zoe]
+home = "office 12"
+role = "writer"
+[world.people.Kira]
+home = "office 13"
+role = "dev"
+[world.people.Liam]
+home = "office 14"
+role = "dev"
+[world.people.Mia]
+home = "office 15"
+role = "designer"
+[world.people.Noah]
+home = "office 16"
+role = "analyst"
+
+# ---------------------------------------------------------------------------
+# Personal objects (one per person)
+[world.objects.laptop]
+owner = "Alex"
+[world.objects.backpack]
+owner = "Blake"
+[world.objects.yoga_mat]
+owner = "Grace"
+[world.objects.hoodie]
+owner = "Aaron"
+[world.objects.notebook]
+owner = "Casey"
+[world.objects.headphones]
+owner = "Dana"
+[world.objects.camera]
+owner = "Heidi"
+[world.objects.comic_book]
+owner = "Bella"
+[world.objects.coffee_mug]
+owner = "Evan"
+[world.objects.tablet]
+owner = "Frank"
+[world.objects.gym_bag]
+owner = "Chris"
+[world.objects.hand_cream]
+owner = "Dora"
+[world.objects.water_bottle]
+owner = "Ivan"
+[world.objects.pen]
+owner = "Judy"
+[world.objects.rubiks_cube]
+owner = "Eli"
+[world.objects.shawl]
+owner = "Fiona"
+[world.objects.multimeter]
+owner = "Karl"
+[world.objects.sketchbook]
+owner = "Luna"
+[world.objects.multi_tool]
+owner = "Gabe"
+[world.objects.blazer]
+owner = "Morgan"
+[world.objects.e_reader]
+owner = "Nina"
+[world.objects.pencil_case]
+owner = "Hana"
+[world.objects.umbrella]
+owner = "Oscar"
+[world.objects.scarf]
+owner = "Priya"
+[world.objects.teapot]
+owner = "Iris"
+[world.objects.earbuds]
+owner = "Quinn"
+[world.objects.plant_pot]
+owner = "Rosa"
+[world.objects.frisbee]
+owner = "Jake"
+[world.objects.keyboard]
+owner = "Sam"
+[world.objects.desk_lamp]
+owner = "Tina"
+[world.objects.thermos]
+owner = "Umar"
+[world.objects.glasses_case]
+owner = "Vera"
+[world.objects.cap]
+owner = "Wade"
+[world.objects.figurine]
+owner = "Xena"
+[world.objects.tea_tin]
+owner = "Yara"
+[world.objects.slippers]
+owner = "Zoe"
+[world.objects.wrist_rest]
+owner = "Kira"
+[world.objects.coffee_grinder]
+owner = "Liam"
+[world.objects.orchid]
+owner = "Mia"
+[world.objects.bike_helmet]
+owner = "Noah"
+
+# ---------------------------------------------------------------------------
+# Schedule scaled for 40 people / 3 meeting rooms (list replaces the parent's).
+[[schedule]]
+day_index = 0
+start = "09:05"
+end = "09:15"
+room = "meeting room 1"
+people_sample = 20
+description = "morning stand-up"
+[[schedule]]
+day_index = 0
+start = "10:30"
+end = "10:50"
+room = "meeting room 3"
+people_sample = 5
+description = "design sync"
+[[schedule]]
+day_index = 0
+start = "12:00"
+end = "12:30"
+room = "kitchen"
+people_sample = 14
+description = "lunch"
+[[schedule]]
+day_index = 0
+start = "13:00"
+end = "13:30"
+room = "meeting room 2"
+people_sample = 6
+description = "project review"
+[[schedule]]
+day_index = 1
+start = "09:05"
+end = "09:20"
+room = "meeting room 1"
+people = "all"
+description = "all-hands demo"
+[[schedule]]
+day_index = 1
+start = "11:00"
+end = "11:30"
+room = "meeting room 2"
+people_sample = 8
+description = "client presentation"
+[[schedule]]
+day_index = 1
+start = "12:00"
+end = "12:45"
+room = "kitchen"
+people_sample = 14
+description = "team lunch"
+[[schedule]]
+day_index = 1
+start = "13:15"
+end = "13:45"
+room = "meeting room 3"
+people_sample = 10
+description = "onboarding training"
+[[schedule]]
+day_index = 2
+start = "09:05"
+end = "09:10"
+room = "meeting room 1"
+people_sample = 16
+description = "daily sync"
+[[schedule]]
+day_index = 2
+start = "10:00"
+end = "10:30"
+room = "meeting room 2"
+people_sample = 5
+description = "architecture discussion"
+[[schedule]]
+day_index = 2
+start = "12:00"
+end = "12:20"
+room = "kitchen"
+people_sample = 8
+description = "quick lunch"
+[[schedule]]
+day_index = 2
+start = "13:00"
+end = "13:20"
+room = "meeting room 3"
+people_sample = 2
+description = "one-on-one"

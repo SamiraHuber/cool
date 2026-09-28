@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipeline Control</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 360px 1fr; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 14px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px; margin-bottom: 8px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #f6f8fb; border: 1px solid #e1e7ef; border-radius: 10px; padding: 12px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    .stat-card { border: 1px solid #d8dee8; border-radius: 10px; padding: 12px; background: #fbfcff; }
+    @media (max-width: 960px) { .workspace { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Video Publisher</h5>
+        <div class="muted">Start a frame-directory publisher inside the running `bordsupr` runtime container.</div>
+      </div>
+      <div class="panel-body">
+        <label for="frameDirInput" class="form-label">Absolute frames directory</label>
+        <input id="frameDirInput" class="form-control" type="text" value="{{ video_publisher_default_frame_dir }}" />
+
+        <label for="strideInput" class="form-label mt-3">Publish every Nth frame</label>
+        <input id="strideInput" class="form-control" type="number" min="1" max="100" value="5" />
+
+        <label for="hzInput" class="form-label mt-3">Publish rate (Hz)</label>
+        <input id="hzInput" class="form-control" type="number" min="0.1" max="30" step="0.1" value="1.0" />
+
+        <label for="maxImagesInput" class="form-label mt-3">Max images (0 = all)</label>
+        <input id="maxImagesInput" class="form-control" type="number" min="0" max="50000" value="0" />
+
+        <div class="form-check mt-3">
+          <input id="loopInput" class="form-check-input" type="checkbox" checked />
+          <label class="form-check-label" for="loopInput">Loop frames</label>
+        </div>
+
+        <div class="form-check mt-3">
+          <input id="generateCaptionsInput" class="form-check-input" type="checkbox" checked />
+          <label class="form-check-label" for="generateCaptionsInput">Generate scene captions</label>
+        </div>
+
+        <div class="form-check mt-3">
+          <input id="createRunMapInput" class="form-check-input" type="checkbox" checked />
+          <label class="form-check-label" for="createRunMapInput">Create map for this run</label>
+        </div>
+
+        <label for="runMapNameInput" class="form-label mt-3">Run map name</label>
+        <input id="runMapNameInput" class="form-control" type="text" placeholder="Auto-generate from frames directory" />
+
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-primary" onclick="startPublisher()">Start Publisher</button>
+          <button class="btn btn-outline-secondary" onclick="refreshStatus()">Refresh Status</button>
+          <button class="btn btn-outline-danger" onclick="stopPublisher()">Stop Publisher</button>
+        </div>
+
+        <hr>
+        <div id="statusBlock" class="muted">No command executed yet.</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Pipeline State</h5>
+        <div class="muted">As frames are published on `/spot/camera/frontleft/image_rotated`, the existing runtime pipeline feeds objects, interactions, persons, and cluster pages through the database.</div>
+      </div>
+      <div class="panel-body">
+        <div id="publisherMeta" class="mb-3 muted">Loading publisher status...</div>
+        <div class="mb-3">
+          <a class="btn btn-sm btn-outline-primary" href="/?tab=objects">Open Objects</a>
+          <a class="btn btn-sm btn-outline-primary" href="/?tab=interactions">Open Interactions</a>
+          <a class="btn btn-sm btn-outline-primary" href="/clusters">Open Cluster Similarity</a>
+        </div>
+        <div id="statsBlock" class="stat-grid mb-3"></div>
+        <div class="mb-2"><strong>Publisher log tail</strong></div>
+        <div id="logBlock" class="mono">Loading...</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function fmtStatus(status) {
+      if (status === 'running') return '<span class="text-success fw-semibold">running</span>';
+      if (status === 'stale') return '<span class="text-warning fw-semibold">stale</span>';
+      if (status === 'stopped') return '<span class="text-muted fw-semibold">stopped</span>';
+      return `<span class="text-danger fw-semibold">${escapeHtml(status || 'unknown')}</span>`;
+    }
+
+    function fmtToggle(value) {
+      if (value === true) return '<span class="text-success fw-semibold">enabled</span>';
+      if (value === false) return '<span class="text-muted fw-semibold">disabled</span>';
+      return '<span class="text-muted fw-semibold">unknown</span>';
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    }
+
+    async function refreshStatus() {
+      try {
+        const [status, specs] = await Promise.all([
+          fetchJson('/api/pipeline/video_publisher/status'),
+          fetchJson('/api/db/specs'),
+        ]);
+
+        document.getElementById('statusBlock').innerHTML = `Publisher is ${fmtStatus(status.status)} in container <code>${escapeHtml(status.container || '-')}</code>.`;
+        const last = status.last_request || {};
+        document.getElementById('publisherMeta').innerHTML = `
+          <div class="kv"><div>Status</div><div>${fmtStatus(status.status)}</div></div>
+          <div class="kv"><div>PID</div><div>${escapeHtml(status.pid || '-')}</div></div>
+          <div class="kv"><div>Database</div><div>${escapeHtml(status.database_url || '-')}</div></div>
+          <div class="kv"><div>Run map</div><div>${last.run_map_name ? `<a href="/?tab=map&building=${encodeURIComponent(last.run_map_name)}">${escapeHtml(last.run_map_name)}</a>` : '-'}</div></div>
+          <div class="kv"><div>Scene captions</div><div>${fmtToggle(last.generate_captions ?? status.captions_enabled)}</div></div>
+          <div class="kv"><div>Face detector</div><div>${fmtToggle(status.face_detector_available)}</div></div>
+          <div class="kv"><div>Host frame dir</div><div>${escapeHtml(last.frame_dir || '-')}</div></div>
+          <div class="kv"><div>Runtime frame dir</div><div>${escapeHtml(last.container_frame_dir || '-')}</div></div>
+          <div class="kv"><div>Stride</div><div>${escapeHtml(last.image_stride || '-')}</div></div>
+          <div class="kv"><div>Publish Hz</div><div>${escapeHtml(last.publish_hz || '-')}</div></div>
+        `;
+        document.getElementById('logBlock').textContent = status.log_tail || 'No log output yet.';
+
+        const tables = Array.isArray(specs.tables) ? specs.tables : [];
+        const tableMap = Object.fromEntries(tables.map(table => [table.name, table.row_count]));
+        document.getElementById('statsBlock').innerHTML = [
+          ['scenes', 'Scenes'],
+          ['objects', 'Object Clusters'],
+          ['object_observations', 'Object Observations'],
+          ['persons', 'Persons'],
+          ['face_observations', 'Face Observations'],
+          ['interactions', 'Interactions'],
+        ].map(([key, label]) => `
+          <div class="stat-card">
+            <div class="muted">${label}</div>
+            <div><strong>${Number(tableMap[key] || 0)}</strong></div>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function startPublisher() {
+      const payload = {
+        frame_dir: document.getElementById('frameDirInput').value.trim(),
+        image_stride: Number(document.getElementById('strideInput').value || 5),
+        publish_hz: Number(document.getElementById('hzInput').value || 1.0),
+        max_images: Number(document.getElementById('maxImagesInput').value || 0),
+        loop: document.getElementById('loopInput').checked,
+        generate_captions: document.getElementById('generateCaptionsInput').checked,
+        recursive: false,
+        create_run_map: document.getElementById('createRunMapInput').checked,
+        run_map_name: document.getElementById('runMapNameInput').value.trim() || null,
+      };
+      document.getElementById('statusBlock').textContent = 'Starting publisher...';
+      try {
+        await fetchJson('/api/pipeline/video_publisher/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        await refreshStatus();
+      } catch (err) {
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function stopPublisher() {
+      document.getElementById('statusBlock').textContent = 'Stopping publisher...';
+      try {
+        await fetchJson('/api/pipeline/video_publisher/stop', {
+          method: 'POST',
+        });
+        await refreshStatus();
+      } catch (err) {
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    refreshStatus();
+    window.startPublisher = startPublisher;
+    window.stopPublisher = stopPublisher;
+    window.refreshStatus = refreshStatus;
+  </script>
+</body>
+</html>

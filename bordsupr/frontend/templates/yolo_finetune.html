@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOLO Fine-Tuning</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --line: #d4dce8;
+      --ink: #1f2a37;
+      --muted: #637182;
+      --accent: #0b6e4f;
+    }
+    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; color: var(--ink); }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 0; }
+    .panel { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid var(--line); background: #fbfcff; }
+    .panel-body { padding: 16px; overflow: auto; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #f6f8fb; border: 1px solid #e1e7ef; border-radius: 10px; padding: 12px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    .stat-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fbfcff; }
+    .img-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fff; margin-bottom: 12px; }
+    .img-card img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+    @media (max-width: 980px) { .workspace { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">YOLO Fine-Tuning</h5>
+        <div class="muted">Train and evaluate YOLO models on indoor datasets.</div>
+      </div>
+      <div class="panel-body">
+        <h6 class="mb-2">Quick Test (Subset)</h6>
+        <div class="mono mb-3">python3 scripts/finetune_yolo11.py --test-subset --epochs 3 --batch 4 --device 0</div>
+
+        <h6 class="mb-2">Full Training</h6>
+        <div class="mono mb-3">python3 scripts/finetune_yolo11.py --epochs 100 --batch 16 --model yolo11n.pt --device 0</div>
+
+        <h6 class="mb-2">Available Models</h6>
+        <div id="modelsBlock" class="mb-3"><div class="muted">Loading…</div></div>
+
+        <h6 class="mb-2">Training Runs</h6>
+        <div id="runsBlock" class="mb-3"><div class="muted">Loading…</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Latest Loss Plot</h5>
+        <div class="muted">Training and validation metrics from the most recent run.</div>
+      </div>
+      <div class="panel-body" id="plotBlock">
+        <div class="muted">No loss plot available yet. Run training to generate plots.</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    }
+
+    async function loadModels() {
+      const el = document.getElementById('modelsBlock');
+      try {
+        const data = await fetchJson('/api/yolo_models');
+        if (!data.models || data.models.length === 0) {
+          el.innerHTML = '<div class="muted">No models found.</div>';
+          return;
+        }
+        el.innerHTML = '<div class="stat-grid">' + data.models.map(m => `
+          <div class="stat-card">
+            <div class="muted">${m.name}</div>
+            <div><strong>${m.size_mb} MB</strong></div>
+            <div class="muted" style="font-size:11px;word-break:break-all;">${m.path}</div>
+          </div>
+        `).join('') + '</div>';
+      } catch (err) {
+        el.innerHTML = `<div class="text-danger">Error loading models: ${err.message}</div>`;
+      }
+    }
+
+    async function loadRuns() {
+      const el = document.getElementById('runsBlock');
+      try {
+        const data = await fetchJson('/api/yolo_finetune/runs');
+        if (!data.runs || data.runs.length === 0) {
+          el.innerHTML = '<div class="muted">No training runs found.</div>';
+          return;
+        }
+        el.innerHTML = data.runs.map(r => `
+          <div class="img-card">
+            <div class="mb-1"><strong>${r.name}</strong></div>
+            <div class="muted">Epochs: ${r.epochs} | mAP@50-95: ${r.map50_95 ?? 'N/A'} | mAP@50: ${r.map50 ?? 'N/A'}</div>
+            <div class="muted">${r.output_dir}</div>
+          </div>
+        `).join('');
+
+        // Show latest plot
+        const plotEl = document.getElementById('plotBlock');
+        const latest = data.runs.find(r => r.plot_url);
+        if (latest) {
+          plotEl.innerHTML = `<img src="${latest.plot_url}" alt="Loss plot" style="max-width:100%;border-radius:8px;" />`;
+        }
+      } catch (err) {
+        el.innerHTML = `<div class="text-danger">Error loading runs: ${err.message}</div>`;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadModels();
+      loadRuns();
+    });
+  </script>
+</body>
+</html>

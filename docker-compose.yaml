@@ -1,0 +1,350 @@
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg17-trixie
+    container_name: db
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bordsupr
+    expose:
+      - "5432"
+    ports:
+      - "35432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bordsupr"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      robotnet:
+        aliases:
+          - db
+
+  vlm_server:
+    image: vllm/vllm-openai:v0.11.2
+    container_name: vlm_server
+    stdin_open: true
+    tty: true
+    runtime: nvidia
+    entrypoint: ["/bin/bash", "/start_vlm.sh"]
+    env_file:
+      - ./vlm/vlm.env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ./vlm/start_vlm.sh:/start_vlm.sh:ro
+    ports:
+      - "8002:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: []
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/models', timeout=3).read()"
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 120s
+    networks:
+      - robotnet
+
+  spot_ros2:
+    build:
+      context: ./spot_ros2
+      dockerfile: Dockerfile
+    container_name: spot_ros2
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    privileged: true
+    network_mode: host
+    shm_size: '512mb'
+    volumes:
+      - ./spot_config.yaml:/ros_ws/src/robot.yaml
+      - ./bordsupr/shared:/shared
+      - ./scripts/record_robot_path.py:/opt/local/record_robot_path.py:ro
+      - ./scripts/export_velodyne_scan.py:/opt/local/export_velodyne_scan.py:ro
+      - ./scripts/export_toolbox_map.py:/opt/local/export_toolbox_map.py:ro
+      - ./scripts/publish_toolbox_map_snapshot.py:/opt/local/publish_toolbox_map_snapshot.py:ro
+      - ./scripts/nav2_planner_bridge.py:/opt/local/nav2_planner_bridge.py:ro
+      - ./scripts/nav2_replanning_2hz.xml:/opt/local/nav2_replanning_2hz.xml:ro
+      - ./scripts/navigation_stack_manager.py:/opt/local/navigation_stack_manager.py:ro
+      - ./scripts/slam_toolbox_map_manager.py:/opt/local/slam_toolbox_map_manager.py:ro
+      - ./scripts/slam_tab_manager.py:/opt/local/slam_tab_manager.py
+      - ./scripts/cmd_vel_monitor.py:/opt/local/cmd_vel_monitor.py:ro
+      - ./scripts/slam_toolbox_params.yaml:/opt/local/slam_toolbox_params.yaml:ro
+      - ./scripts/slam_toolbox_localization_params.yaml:/opt/local/slam_toolbox_localization_params.yaml:ro
+      - ./scripts/run_slam_toolbox.sh:/opt/local/run_slam_toolbox.sh
+      - ./bordsupr/runtime/bordsupr/config/nav2_params.yaml:/opt/local/nav2_params.yaml:ro
+      - ./bordsupr/runtime/bordsupr/bordsupr/navigation_executor_node.py:/opt/local/navigation_executor_node.py:ro
+      - ./spot_ros2/spot_common/spot_common/launch/spot_launch_helpers.py:/ros_ws/src/spot_common/spot_common/launch/spot_launch_helpers.py:ro
+      - ./spot_ros2/spot_driver/launch/spot_driver.launch.py:/ros_ws/src/spot_driver/launch/spot_driver.launch.py:ro
+      - ./spot_ros2/spot_wrapper/spot_wrapper/wrapper.py:/ros_ws/src/spot_wrapper/spot_wrapper/wrapper.py:ro
+      - ./scripts/test_walk_velocity.py:/opt/local/test_walk_velocity.py:ro
+      - ./scripts/test_navigation_executor.py:/opt/local/test_navigation_executor.py:ro
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-23}
+      VELODYNE_SCAN_PATH: /shared/velodyne_scan_snapshot.json
+      VELODYNE_WORLD_FRAME: spot/vision
+      VELODYNE_WORLD_FRAME_LABEL: world
+      VELODYNE_MIN_RANGE_M: "0.35"
+      VELODYNE_MAX_RANGE_M: "12.0"
+      VELODYNE_MIN_Z_M: "-0.60"
+      VELODYNE_MAX_Z_M: "1.20"
+      NAV_MAX_LINEAR_SPEED_MPS: "0.75"
+      NAV_MAX_ANGULAR_SPEED_RPS: "0.70"
+      NAV_LOOKAHEAD_DISTANCE_M: "1.0"
+      NAVIGATION_DEBUG_CMD_VEL_RATE_HZ: "20.0"
+      NAVIGATION_DEBUG_CMD_VEL_LINEAR_SPEED_MPS: "0.70"
+      NAVIGATION_DEBUG_CMD_VEL_ANGULAR_SPEED_RPS: "0.55"
+      NAVIGATION_ALWAYS_DEBUG_CMD_VEL_FOR_WEB_UI: "0"
+      SLAM_TOOLBOX_MAP_PATH: /shared/toolbox_map_snapshot.json
+      SLAM_TOOLBOX_MAP_TOPIC: /map
+      SLAM_TOOLBOX_ODOMETRY_TOPIC: /spot/odometry
+      ROBOT_PATH_ODOM_FRAME: spot/vision
+      MAP_FALLBACK_ODOM_FRAME: spot/vision
+      NAV2_GLOBAL_COSTMAP_PATH: /shared/nav2_global_costmap_snapshot.json
+      NAV2_PARAMS_FILE: /opt/local/nav2_params.yaml
+      NAV2_PLAN_REQUEST_PATH: /shared/nav2_plan_request.json
+      NAV2_PLAN_RESPONSE_PATH: /shared/nav2_plan_response.json
+      NAV_STACK_REQUEST_PATH: /shared/nav_stack_request.json
+      NAV_STACK_STATUS_PATH: /shared/nav_stack_status.json
+      NAV_MAP_DIR: /shared/maps
+      NAV_MAP_BASENAME: current_map
+      TOOLBOX_MAP_REQUEST_PATH: /shared/toolbox_map_request.json
+      TOOLBOX_MAP_STATUS_PATH: /shared/toolbox_map_status.json
+      TOOLBOX_MAP_AUTOLOAD_PATH: /shared/maps/toolbox_saved/autoload.json
+      TOOLBOX_MAP_SAVE_DIR: /shared/maps/toolbox_saved
+      TOOLBOX_MAP_DEFAULT_NAME: default_map
+    command:
+      - bash
+      - -lc
+      - |
+          set -eo pipefail
+
+          source /opt/ros/humble/setup.bash
+          source /ros_ws/install/setup.bash
+
+          mkdir -p /shared/maps
+          rm -f /shared/navigation_request.json /shared/navigation_status.json \
+                /shared/cmd_vel_status.json \
+                /shared/nav_stack_request.json /shared/nav_stack_status.json
+
+          python3 /opt/local/navigation_stack_manager.py &
+          nav_stack_manager_pid=$$!
+          python3 /opt/local/slam_toolbox_map_manager.py &
+          toolbox_map_manager_pid=$$!
+          python3 /opt/local/navigation_executor_node.py &
+          navigation_executor_pid=$$!
+          python3 /opt/local/nav2_planner_bridge.py &
+          nav2_planner_bridge_pid=$$!
+          python3 /opt/local/publish_toolbox_map_snapshot.py &
+          toolbox_map_snapshot_pub_pid=$$!
+          bash -lc 'while true; do python3 /opt/local/slam_tab_manager.py; code=$$?; echo "[slam_tab_manager supervisor] exited with code $${code}; restarting in 1s" >&2; sleep 1; done' &
+          slam_tab_manager_pid=$$!
+          python3 /opt/local/cmd_vel_monitor.py &
+          cmd_vel_monitor_pid=$$!
+
+          ros2 launch spot_driver spot_driver.launch.py \
+            config_file:=/ros_ws/src/robot.yaml \
+            spot_name:=spot \
+            launch_image_publishers:=true \
+            stitch_front_images:=True \
+            depth_registered_mode:=from_spot \
+            launch_rviz:=false &
+          spot_driver_pid=$$!
+
+          ros2 run nav2_controller controller_server --ros-args \
+            --params-file /opt/local/nav2_params.yaml \
+            -r /cmd_vel:=/cmd_vel_nav &
+          controller_server_pid=$$!
+          ros2 run nav2_velocity_smoother velocity_smoother --ros-args \
+            --params-file /opt/local/nav2_params.yaml \
+            -r cmd_vel:=/cmd_vel_nav \
+            -r cmd_vel_smoothed:=/spot/cmd_vel &
+          velocity_smoother_pid=$$!
+          ros2 run nav2_planner planner_server --ros-args \
+            --params-file /opt/local/nav2_params.yaml &
+          planner_server_pid=$$!
+          ros2 run nav2_smoother smoother_server --ros-args \
+            --params-file /opt/local/nav2_params.yaml &
+          smoother_server_pid=$$!
+          ros2 run nav2_bt_navigator bt_navigator --ros-args \
+            --params-file /opt/local/nav2_params.yaml &
+          bt_navigator_pid=$$!
+          ros2 run nav2_behaviors behavior_server --ros-args \
+            --params-file /opt/local/nav2_params.yaml \
+            -r cmd_vel:=/cmd_vel_nav &
+          behavior_server_pid=$$!
+
+          python3 /opt/local/record_robot_path.py &
+          path_recorder_pid=$$!
+          python3 /opt/local/export_velodyne_scan.py &
+          velodyne_export_pid=$$!
+          ros2 run pointcloud_to_laserscan pointcloud_to_laserscan_node --ros-args \
+            -r cloud_in:=/spot/velodyne/points \
+            -r scan:=/spot/velodyne/scan \
+            -p target_frame:=spot/body \
+            -p transform_tolerance:=0.2 \
+            -p min_height:=-0.20 \
+            -p max_height:=0.70 \
+            -p angle_min:=-3.14159 \
+            -p angle_max:=3.14159 \
+            -p angle_increment:=0.008726646 \
+            -p scan_time:=0.1 \
+            -p range_min:=0.35 \
+            -p range_max:=12.0 \
+            -p use_inf:=true \
+            -p inf_epsilon:=1.0 &
+          pointcloud_to_laserscan_pid=$$!
+
+          bash /opt/local/run_slam_toolbox.sh &
+          slam_toolbox_pid=$$!
+          python3 /opt/local/export_toolbox_map.py &
+          toolbox_map_export_pid=$$!
+          python3 /opt/local/export_toolbox_map.py --ros-args \
+            -r __node:=global_costmap_exporter \
+            -p output_path:=/shared/nav2_global_costmap_snapshot.json \
+            -p map_topic:=/global_costmap/costmap \
+            -p odometry_topic:=/spot/odometry &
+          global_costmap_export_pid=$$!
+
+          echo "Waiting for map -> spot/body TF before activating Nav2 lifecycle..."
+          nav2_tf_ready=0
+          for i in $$(seq 1 80); do
+            timeout 3 ros2 run tf2_ros tf2_echo map spot/body >/tmp/nav2_tf_wait.log 2>&1 || true
+            if grep -q "At time" /tmp/nav2_tf_wait.log; then
+              nav2_tf_ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          if [[ "$${nav2_tf_ready}" -eq 1 ]]; then
+            echo "Nav2 TF is ready; starting lifecycle manager."
+          else
+            echo "WARNING: map -> spot/body TF was not ready before Nav2 lifecycle startup; starting anyway." >&2
+            cat /tmp/nav2_tf_wait.log >&2 || true
+          fi
+
+          ros2 run nav2_lifecycle_manager lifecycle_manager --ros-args \
+            --params-file /opt/local/nav2_params.yaml &
+          lifecycle_manager_pid=$$!
+
+          cleanup() {
+            kill $${spot_driver_pid} $${velodyne_export_pid} $${toolbox_map_export_pid} \
+                 $${global_costmap_export_pid} \
+                 $${toolbox_map_snapshot_pub_pid} $${slam_tab_manager_pid} $${cmd_vel_monitor_pid} $${slam_toolbox_pid} \
+                 $${pointcloud_to_laserscan_pid} $${navigation_executor_pid} \
+                 $${nav_stack_manager_pid} $${toolbox_map_manager_pid} \
+                 $${controller_server_pid} $${velocity_smoother_pid} $${planner_server_pid} $${smoother_server_pid} \
+                 $${bt_navigator_pid} $${behavior_server_pid} \
+                 $${lifecycle_manager_pid} \
+                 $${nav2_planner_bridge_pid} $${path_recorder_pid} 2>/dev/null || true
+            wait $${spot_driver_pid} $${velodyne_export_pid} $${toolbox_map_export_pid} \
+                 $${global_costmap_export_pid} \
+                $${toolbox_map_snapshot_pub_pid} $${slam_tab_manager_pid} $${cmd_vel_monitor_pid} $${slam_toolbox_pid} \
+                 $${pointcloud_to_laserscan_pid} $${navigation_executor_pid} \
+                 $${nav_stack_manager_pid} $${toolbox_map_manager_pid} \
+                 $${controller_server_pid} $${velocity_smoother_pid} $${planner_server_pid} $${smoother_server_pid} \
+                 $${bt_navigator_pid} $${behavior_server_pid} \
+                 $${lifecycle_manager_pid} \
+                 $${nav2_planner_bridge_pid} $${path_recorder_pid} 2>/dev/null || true
+          }
+          trap cleanup EXIT INT TERM
+
+          wait $${spot_driver_pid}
+
+  web:
+    build:
+      context: ./bordsupr/frontend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/bordsupr
+      LIDAR_OCCUPANCY_MAP_PATH: /shared/lidar_occupancy_map.json
+      TOOLBOX_MAP_PATH: /shared/toolbox_map_snapshot.json
+      NAV2_GLOBAL_COSTMAP_PATH: /shared/nav2_global_costmap_snapshot.json
+      MAP_SNAPSHOT_PATH: /shared/toolbox_map_snapshot.json
+      VELODYNE_SCAN_PATH: /shared/velodyne_scan_snapshot.json
+      VIDEO_PUBLISHER_CONTAINER: bordsupr
+      VIDEO_PUBLISHER_DEFAULT_FRAME_DIR: ${VIDEO_PUBLISHER_DEFAULT_FRAME_DIR:-${PWD}/bordsupr/runtime/bordsupr/resource/backup_image_queue_20260209_121144/images}
+      VIDEO_PUBLISHER_HOST_RUNTIME_ROOT: ${PWD}/bordsupr/runtime
+      VIDEO_PUBLISHER_CONTAINER_RUNTIME_ROOT: /workspace/src
+      VIDEO_PUBLISHER_EXTRA_RUNTIME_MOUNTS: ""
+      CLUSTER_TESTSET_STORE_DIR: /shared/cluster_testsets
+      NAVIGATION_REQUEST_PATH: /shared/navigation_request.json
+      NAVIGATION_STATUS_PATH: /shared/navigation_status.json
+      VLM_API_URL: http://vlm_server:8000/v1
+      VLM_MODEL: Qwen/Qwen3-VL-4B-Instruct
+      VLM_MAX_MODEL_LEN: 16384
+      USE_KIMI: ${USE_KIMI:-false}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_API_URL: ${KIMI_API_URL:-https://api.moonshot.ai/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-k2.6}
+      USE_GEMINI: ${USE_GEMINI:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-pro}
+      CLUSTER_OSNET_DEVICE: ${CLUSTER_OSNET_DEVICE:-auto}
+      HF_TOKEN: ${HF_TOKEN}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+    container_name: web
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stdin_open: true
+    tty: true
+    working_dir: /app
+
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./bordsupr/shared:/shared
+      - ./bordsupr/runtime:/workspace/src:ro
+      - ./bordsupr/runtime:/opt/youownit_runtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./reports/yolo_finetune:/workspace/yolo_finetune:ro
+      - ./data:/workspace/data:ro
+      - hf_cache:/root/.cache/huggingface
+      - ./curiosity:/app/curiosity:ro
+      - ./data:/app/data:ro
+      - ./bordsupr/frontend/app.py:/app/app.py:ro
+      - ./bordsupr/frontend/osnet_model.py:/app/osnet_model.py:ro
+      - ./bordsupr/frontend/templates:/app/templates:ro
+      - ./bordsupr/frontend/static:/app/static:ro
+      - ./bordsupr/frontend/agent:/app/agent:ro
+      - ./reports:/app/reports
+      - ./scripts:/app/scripts:ro
+    ports:
+      - "8080:8000"
+    command: ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - robotnet
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  robotnet:
+
+volumes:
+  pgdata:
+  hf_cache:

@@ -1,0 +1,46 @@
+# agent_cued_6room: 6-room heading world, tuned a SLIGHT step toward
+# cue-driven navigation — the 6-room counterpart of agent_cued_24room
+# (config-only): more episodes, denser heading cues, mildly flattened
+# room priors, distractor churn pushed into storage, snack/refreshment
+# destinations spread to offices as well as the meeting room.
+extends = "intent_cued_heading.toml"
+name = "agent_cued_6room"
+# own seed (see agent_cued_24room: schedule-cue collisions are seed-dependent)
+seed = 45
+
+[output]
+dir = "data/curiosity/datasets/agent_cued_6room"
+
+[episodes]
+per_day = [8, 10]            # was [6, 8]
+# never pick actors who are in a scheduled event during the episode window
+exclude_event_actors = true
+
+# Snack/refreshment destinations: meeting room + offices (kitchen excluded:
+# it is the cue room, dest == cue room would be a no-op; dest == home office
+# is fine and plausible: "brings a snack back to a colleague's office").
+[episodes.templates.snack_delivery]
+dest_pool = ["meeting room", "office 1", "office 2", "office 3"]
+[episodes.templates.refreshment_prep]
+dest_pool = ["meeting room", "office 1", "office 2", "office 3"]
+
+[cues]
+p_heading = 0.6          # was 0.5
+
+[cues.p_heading_by_source]
+episode = 0.8            # was 0.7
+schedule = 0.7           # was 0.6
+random = 0.5             # was 0.4
+
+# Mild flattening of room priors (kitchen/home less dominant).
+[decisions.base_affinity]
+home = 1.5               # was 2.0
+office_other = 0.5       # was 0.0
+kitchen = 1.5            # was 2.1
+meeting = 0.8            # was 0.3
+storage = 0.2            # was -0.4
+utility = 0.2            # was -0.4
+
+# Push aimless (null-change) motion into storage (low-interest utility room).
+[decisions.p_move.room_multipliers]
+storage = 1.5

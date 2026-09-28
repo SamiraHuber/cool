@@ -1,0 +1,30 @@
+# intent_cued: base world + intent episodes (design §B v2.4, §3).
+extends = "base.toml"
+name = "intent_cued"
+
+[output]
+dir = "data/curiosity/datasets/intent_cued"
+
+[episodes]
+per_day = [4, 6]
+head_fake_rate = 0.10
+cue_to_change_window = [10, 30]
+
+[episodes.templates.snack_delivery]
+weight = 3
+actors = 1
+dest_pool = ["@meeting"]
+[episodes.templates.coordinated_exodus]
+weight = 3
+actors = [2, 3]
+dest_pool = ["@meeting"]
+[episodes.templates.refreshment_prep]
+weight = 2
+actors = [2, 4]
+dest_pool = ["@meeting"]
+[episodes.templates.pack_up]
+weight = 2
+actors = 1
+[episodes.templates.printer_run]
+weight = 1
+actors = 1

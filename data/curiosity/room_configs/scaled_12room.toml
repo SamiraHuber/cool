@@ -1,0 +1,227 @@
+# scaled_12room: one bigger single-floor office, no wings (design §9.2).
+# 7 offices, 2 meeting rooms, kitchen, storage, printer room; 14 people.
+extends = "intent_cued.toml"
+name = "scaled_12room"
+
+[output]
+dir = "data/curiosity/datasets/scaled_12room"
+
+# Replace the whole world subtree (do not merge with the 6-room world).
+[world]
+__replace__ = true
+
+[world.distances]
+default = 2
+[[world.distances.exceptions]]
+pair = ["office 1", "office 2"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 4", "office 5"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 6", "office 7"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 1", "office 7"]
+d = 4
+[[world.distances.exceptions]]
+pair = ["office 2", "office 6"]
+d = 4
+[[world.distances.exceptions]]
+pair = ["kitchen", "office 7"]
+d = 3
+[[world.distances.exceptions]]
+pair = ["kitchen", "office 1"]
+d = 3
+[[world.distances.exceptions]]
+pair = ["storage", "printer room"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["meeting room 1", "meeting room 2"]
+d = 1
+
+[world.rooms.kitchen]
+type = "social"
+capacity = 8
+fixtures = ["coffee_machine", "fridge", "microwave"]
+[world.rooms.storage]
+type = "utility"
+capacity = 4
+fixtures = ["shelf", "toolbox"]
+[world.rooms."printer room"]
+type = "utility"
+capacity = 3
+fixtures = ["printer", "paper_shelf"]
+[world.rooms."office 1"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 2"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 3"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 4"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."office 5"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."office 6"]
+type = "office"
+capacity = 2
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."office 7"]
+type = "office"
+capacity = 2
+fixtures = ["desk_1", "desk_2"]
+[world.rooms."meeting room 1"]
+type = "meeting"
+capacity = 10
+fixtures = ["projector", "whiteboard", "conference_table"]
+[world.rooms."meeting room 2"]
+type = "meeting"
+capacity = 6
+fixtures = ["screen", "whiteboard", "conference_table"]
+
+[world.people.Alex]
+home = "office 1"
+role = "dev"
+[world.people.Blake]
+home = "office 1"
+role = "dev"
+[world.people.Casey]
+home = "office 2"
+role = "designer"
+[world.people.Dana]
+home = "office 2"
+role = "pm"
+[world.people.Evan]
+home = "office 3"
+role = "dev"
+[world.people.Frank]
+home = "office 3"
+role = "analyst"
+[world.people.Grace]
+home = "office 4"
+role = "intern"
+[world.people.Heidi]
+home = "office 4"
+role = "writer"
+[world.people.Ivan]
+home = "office 5"
+role = "dev"
+[world.people.Judy]
+home = "office 5"
+role = "analyst"
+[world.people.Karl]
+home = "office 6"
+role = "hardware"
+[world.people.Luna]
+home = "office 6"
+role = "hardware"
+[world.people.Morgan]
+home = "office 7"
+role = "pm"
+[world.people.Nina]
+home = "office 7"
+role = "designer"
+
+[world.objects.laptop]
+owner = "Alex"
+[world.objects.backpack]
+owner = "Blake"
+[world.objects.notebook]
+owner = "Casey"
+[world.objects.headphones]
+owner = "Dana"
+[world.objects.coffee_mug]
+owner = "Evan"
+[world.objects.tablet]
+owner = "Frank"
+[world.objects.yoga_mat]
+owner = "Grace"
+[world.objects.camera]
+owner = "Heidi"
+[world.objects.water_bottle]
+owner = "Ivan"
+[world.objects.pen]
+owner = "Judy"
+[world.objects.multimeter]
+owner = "Karl"
+[world.objects.sketchbook]
+owner = "Luna"
+[world.objects.blazer]
+owner = "Morgan"
+[world.objects.e_reader]
+owner = "Nina"
+
+# Schedule uses the two meeting rooms (list replaces the parent's).
+[[schedule]]
+day_index = 0
+start = "09:05"
+end = "09:15"
+room = "meeting room 1"
+people = "all"
+description = "morning stand-up"
+[[schedule]]
+day_index = 0
+start = "12:00"
+end = "12:30"
+room = "kitchen"
+people_sample = 6
+description = "lunch"
+[[schedule]]
+day_index = 0
+start = "13:00"
+end = "13:30"
+room = "meeting room 2"
+people_sample = 4
+description = "project review"
+[[schedule]]
+day_index = 1
+start = "09:05"
+end = "09:15"
+room = "meeting room 1"
+people = "all"
+description = "all-hands demo"
+[[schedule]]
+day_index = 1
+start = "11:00"
+end = "11:30"
+room = "meeting room 1"
+people_sample = 6
+description = "client presentation"
+[[schedule]]
+day_index = 1
+start = "12:00"
+end = "12:45"
+room = "kitchen"
+people_sample = 6
+description = "team lunch"
+[[schedule]]
+day_index = 2
+start = "09:05"
+end = "09:10"
+room = "meeting room 1"
+people = "all"
+description = "daily sync"
+[[schedule]]
+day_index = 2
+start = "10:00"
+end = "10:30"
+room = "meeting room 2"
+people_sample = 3
+description = "architecture discussion"
+[[schedule]]
+day_index = 2
+start = "12:00"
+end = "12:20"
+room = "kitchen"
+people_sample = 3
+description = "quick lunch"

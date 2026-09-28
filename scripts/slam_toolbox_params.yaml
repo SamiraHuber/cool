@@ -1,0 +1,29 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    mode: mapping
+    map_frame: map
+    odom_frame: spot/vision
+    base_frame: spot/body
+    scan_topic: /spot/velodyne/scan
+    # Keep TF timestamps aligned with current time during mapping too so Nav2
+    # consumers do not trip over scan-time lag.
+    restamp_tf: true
+    resolution: 0.05
+    map_update_interval: 1.0        # or 2.0 if CPU is high
+    minimum_time_interval: 0.1      # 10 Hz processing cap
+    transform_publish_period: 0.02
+    throttle_scans: 1
+    max_laser_range: 12.0
+    min_laser_range: 0.35
+    minimum_travel_distance: 0.10   # less scan spam
+    minimum_travel_heading: 0.05
+    use_scan_matching: true
+    use_scan_barycenter: true
+    enable_interactive_mode: true
+    debug_logging: false
+    transform_timeout: 0.2
+    tf_buffer_duration: 30.0
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    do_loop_closing: true

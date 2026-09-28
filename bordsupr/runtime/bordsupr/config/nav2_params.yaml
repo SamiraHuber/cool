@@ -1,0 +1,475 @@
+# Nav2 parameters for Boston Dynamics Spot / Spot-like legged robot
+#
+# Assumptions:
+#   - slam_toolbox or localization provides:
+#       /map topic: nav_msgs/OccupancyGrid
+#       TF: map -> spot/vision -> spot/body
+#   - Spot accepts body-frame velocity commands on:
+#       /spot/cmd_vel
+#   - Obstacle detection is provided as:
+#       /spot/velodyne/scan
+#
+# IMPORTANT:
+#   Spot requires body-frame velocity, not map-frame velocity.
+#   Nav2 controller output is a robot/base-frame Twist command.
+#   This config routes:
+#       controller_server -> /cmd_vel_nav -> velocity_smoother -> /spot/cmd_vel
+#
+# You must implement the topic remaps in your launch file:
+#   velocity_smoother input  /cmd_vel          remap to /cmd_vel_nav
+#   velocity_smoother output /cmd_vel_smoothed remap to /spot/cmd_vel
+#
+# Example launch remaps for velocity_smoother:
+#   remappings=[
+#     ('/cmd_vel', '/cmd_vel_nav'),
+#     ('/cmd_vel_smoothed', '/spot/cmd_vel')
+#   ]
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+
+    global_frame: map
+    robot_base_frame: spot/body
+    odom_topic: /spot/odometry
+
+    bt_loop_duration: 10
+    default_server_timeout: 20000
+    default_nav_to_pose_bt_xml: /opt/local/nav2_replanning_2hz.xml
+
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator/NavigateToPoseNavigator"
+
+    navigate_through_poses:
+      plugin: "nav2_bt_navigator/NavigateThroughPosesNavigator"
+
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_globally_updated_goal_condition_bt_node
+      - nav2_is_path_valid_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_drive_on_heading_cancel_bt_node
+      - nav2_rate_controller_bt_node
+
+
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+
+    # Safer for a real Spot than 30 Hz.
+    controller_frequency: 20.0
+
+    # Do not send directly to Spot.
+    # This should be smoothed before reaching /spot/cmd_vel.
+    cmd_vel_topic: /cmd_vel_nav
+
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+
+    failure_tolerance: 0.3
+
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+
+      # Detect stalled walking quickly enough that the BT can recover/replan
+      # instead of waiting on a stale path for many seconds.
+      required_movement_radius: 0.10
+      movement_time_allowance: 8.0
+
+    general_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+
+      # Forgiving tolerances for a legged platform.
+      xy_goal_tolerance: 1.00
+      yaw_goal_tolerance: 0.30
+
+    FollowPath:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "dwb_core::DWBLocalPlanner"
+      angular_dist_threshold: 0.55
+      forward_sampling_distance: 0.45
+      rotate_to_heading_angular_vel: 0.60
+      max_angular_accel: 2.0
+      simulate_ahead_time: 1.0
+      debug_trajectory_details: false
+
+      # Body-frame velocity limits.
+      # Spot requires body-frame velocity, and DWB samples robot-frame commands.
+      #
+      # Moderate walking speed for supervised real-robot testing.
+      min_vel_x: 0.0
+      max_vel_x: 0.55
+
+      # Disable strafing while validating map/body-frame alignment. This keeps
+      # DWB from satisfying path error with sideways Spot gait commands.
+      min_vel_y: 0.0
+      max_vel_y: 0.0
+
+      max_vel_theta: 0.80
+      min_vel_theta: -0.80
+
+      min_speed_xy: 0.0
+      max_speed_xy: 0.55
+      min_speed_theta: 0.0
+
+      # Moderate acceleration limits for legged motion.
+      acc_lim_x: 1.1
+      acc_lim_y: 0.6
+      acc_lim_theta: 2.0
+
+      decel_lim_x: -1.1
+      decel_lim_y: -0.6
+      decel_lim_theta: -2.0
+
+      # Reduced from the original to avoid excessive CPU load.
+      vx_samples: 12
+      vy_samples: 1
+      vtheta_samples: 24
+
+      sim_time: 2.5
+
+      linear_granularity: 0.05
+      angular_granularity: 0.035
+
+      # Spot + slam_toolbox localization can lag odometry by a few hundred ms.
+      # Keep this above the observed map<-odom TF skew so DWB can transform
+      # the robot pose into the global plan frame instead of stalling.
+      transform_tolerance: 2.0
+
+      xy_goal_tolerance: 1.00
+      trans_stopped_velocity: 0.05
+
+      short_circuit_trajectory_evaluation: true
+      stateful: true
+
+      critics:
+        - RotateToGoal
+        - Oscillation
+        - BaseObstacle
+        - GoalAlign
+        - PathAlign
+        - PathDist
+        - GoalDist
+
+      # Keep local trajectories away from nearby obstacle costs when there is
+      # room, while still allowing the global path to pass through doors.
+      BaseObstacle.scale: 0.10
+
+      PathAlign.scale: 20.0
+      PathAlign.forward_point_distance: 0.30
+
+      GoalAlign.scale: 16.0
+      GoalAlign.forward_point_distance: 0.30
+
+      PathDist.scale: 24.0
+      GoalDist.scale: 20.0
+
+      RotateToGoal.scale: 20.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
+
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+
+    # Nav2 smoother smooths velocity commands sent from controllers to hardware.
+    # This is important for Spot to avoid jerky gait commands.
+    smoothing_frequency: 20.0
+    scale_velocities: true
+
+    # OPEN_LOOP avoids depending on low-latency odometry for smoothing.
+    # Use CLOSED_LOOP only if /spot/odometry is high-rate and low-latency.
+    feedback: "OPEN_LOOP"
+
+    # Must match or be slightly stricter than DWB velocity limits.
+    # Format: [x, y, theta]
+    max_velocity: [0.55, 0.0, 0.80]
+    min_velocity: [-0.15, 0.0, -0.80]
+
+    # Keep zero unless Spot driver has a known minimum executable velocity.
+    deadband_velocity: [0.0, 0.0, 0.0]
+
+    velocity_timeout: 0.5
+
+    # Must match or be slightly stricter than DWB acceleration limits.
+    max_accel: [1.1, 0.6, 2.0]
+    max_decel: [-1.1, -0.6, -2.0]
+
+    odom_topic: /spot/odometry
+    odom_duration: 0.1
+
+    use_realtime_priority: false
+
+    # Set false for geometry_msgs/Twist.
+    # Many Spot ROS bridges expect Twist, not TwistStamped.
+    # For Kilted/newer Nav2, default may be true, so keep this explicit.
+    enable_stamped_cmd_vel: false
+
+
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+
+    expected_planner_frequency: 10.0
+
+    planner_plugins: ["GridBased"]
+
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+
+      # Reduced from 0.5 so the robot does not accept overly offset goals.
+      tolerance: 0.20
+
+      # Safer for a real robot in a mapped environment.
+      # Set true only for intentional exploration.
+      allow_unknown: false
+
+      # Smac 2D is cost-aware and less prone to grid-like zig-zags than NavFn A*
+      # while still supporting holonomic/omni platforms.
+      downsample_costmap: false
+      downsampling_factor: 1
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      motion_model_for_search: "MOORE"
+      cost_travel_multiplier: 4.0
+      use_final_approach_orientation: false
+
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+        refinement_num: 2
+
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: false
+    smoother_plugins: ["simple_smoother"]
+
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: true
+      refinement_num: 2
+
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+
+      update_frequency: 2.0
+      publish_frequency: 1.0
+
+      global_frame: map
+      robot_base_frame: spot/body
+
+      # Keep a modest margin around Spot without closing narrow indoor corridors.
+      footprint: "[[0.35, 0.15], [0.35, -0.15], [-0.35, -0.15], [-0.35, 0.15]]"
+      footprint_padding: 0.00
+
+      resolution: 0.05
+
+      # Keep true so unknown space remains represented in the costmap.
+      # Planner allow_unknown is false, so unknown cells are not planned through.
+      track_unknown_space: true
+
+      plugins:
+        - static_layer
+        - inflation_layer
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: false
+
+        observation_sources: scan
+
+        scan:
+          topic: /spot/velodyne/scan
+          max_obstacle_height: 2.0
+
+          clearing: true
+          marking: true
+
+          # Assumes /spot/velodyne/scan is already a projected LaserScan.
+          # If using raw 3D lidar, consider VoxelLayer instead.
+          data_type: "LaserScan"
+
+          # Reduced from 12 m to reduce long-range noisy global marking.
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.35
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+
+        # Prefer the center of corridors without making inflated cells lethal.
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.15
+
+      always_send_full_costmap: true
+
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+
+      update_frequency: 10.0
+      publish_frequency: 5.0
+
+      global_frame: spot/vision
+      robot_base_frame: spot/body
+
+      rolling_window: true
+
+      # Slightly larger local window for smoother obstacle avoidance.
+      width: 6
+      height: 6
+      resolution: 0.05
+
+      footprint: "[[0.35, 0.15], [0.35, -0.15], [-0.35, -0.15], [-0.35, 0.15]]"
+      footprint_padding: 0.02
+
+      plugins:
+        - obstacle_layer
+        - inflation_layer
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: true
+
+        observation_sources: scan
+
+        scan:
+          topic: /spot/velodyne/scan
+          max_obstacle_height: 2.0
+
+          clearing: true
+          marking: true
+
+          data_type: "LaserScan"
+
+          raytrace_max_range: 6.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 5.0
+          obstacle_min_range: 0.35
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.15
+
+      always_send_full_costmap: true
+
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+
+    cycle_frequency: 10.0
+
+    # Must match controller_server cmd_vel_topic so recovery behaviors
+    # reach the velocity_smoother and Spot driver.
+    cmd_vel_topic: /cmd_vel_nav
+
+    behavior_plugins:
+      - spin
+      - backup
+      - drive_on_heading
+      - wait
+
+    spin:
+      plugin: "nav2_behaviors/Spin"
+
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+
+    wait:
+      plugin: "nav2_behaviors/Wait"
+
+    global_frame: spot/vision
+    robot_base_frame: spot/body
+
+    # Recovery behaviors use the same TF chain and need the same tolerance.
+    transform_tolerance: 2.0
+
+    simulate_ahead_time: 2.0
+
+    # Conservative recovery behavior velocities for Spot.
+    max_rotational_vel: 0.80
+    min_rotational_vel: 0.20
+    rotational_acc_lim: 2.0
+
+
+lifecycle_manager:
+  ros__parameters:
+    use_sim_time: false
+    autostart: true
+
+    # Increase bond timeout from the default 4.0 s to tolerate Fast DDS
+    # latency spikes that otherwise falsely trigger shutdown of all Nav2 nodes.
+    bond_timeout: 15.0
+
+    # Single lifecycle manager is simpler and avoids split activation issues.
+    node_names:
+      - planner_server
+      - smoother_server
+      - controller_server
+      - behavior_server
+      - bt_navigator
+      - velocity_smoother

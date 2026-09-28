@@ -1,0 +1,20 @@
+# intent_cued_heading: 6-room intent world with MORE intent clues:
+# - more episodes per day (6-8 vs 4-6)
+# - heading cues: departure cues often name the destination
+#   ("Alex walks toward the door carrying a plate, heading for the kitchen")
+extends = "intent_cued.toml"
+name = "intent_cued_heading"
+
+[output]
+dir = "data/curiosity/datasets/intent_cued_heading"
+
+[episodes]
+per_day = [6, 8]
+
+[cues]
+p_heading = 0.5          # fallback for any source not listed below
+
+[cues.p_heading_by_source]
+episode = 0.7            # scripted intent: usually announced
+schedule = 0.6           # meeting-bound: often announced
+random = 0.4             # spontaneous: announced less than half the time

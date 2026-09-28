@@ -1,0 +1,32 @@
+# distractor_flat: distractor world with FLATTENED room-activity distribution.
+# No dominant hotspot: kitchen / meeting room / offices draw people about
+# equally (active rooms ~equally active), while storage is deliberately
+# quiet. Mobility overall kept near base level (only the DISTRIBUTION
+# changes, not the amount of activity) — isolates hotspot concentration
+# as the variable vs. distractor.toml (4.0x kitchen/meeting churn).
+extends = "base.toml"
+name = "distractor_flat"
+
+[output]
+dir = "data/curiosity/datasets/distractor_flat"
+
+# equal mobility across the active room types; utility rooms calmer
+[decisions.p_move.base]
+office = 0.55
+social = 0.55
+meeting = 0.55
+utility = 0.30
+
+# storage (the utility room) deliberately less active
+[decisions.p_move.room_multipliers]
+storage = 0.3
+
+# flattened affinities: home/kitchen/meeting all similarly attractive,
+# storage unattractive (base: home 2.0, kitchen 2.1, meeting 0.3)
+[decisions.base_affinity]
+home = 1.2
+office_other = 0.4
+kitchen = 1.2
+meeting = 1.2
+storage = -0.8
+utility = -0.8

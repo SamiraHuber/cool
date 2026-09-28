@@ -1,0 +1,367 @@
+# Base world: v1 parity config (6 rooms, 8 people, 12 objects).
+# Parity gate: marginals should land within ±30% of data/curiosity/datasets/default.
+name = "base"
+seed = 42
+days = ["2026-05-26", "2026-05-27", "2026-05-28"]
+start_time = "09:00"
+end_time = "14:00"
+interval_minutes = 5
+
+# ---------------------------------------------------------------------------
+[world.distances]
+default = 2
+
+[[world.distances.exceptions]]
+pair = ["kitchen", "office 2"]
+d = 3
+[[world.distances.exceptions]]
+pair = ["kitchen", "office 3"]
+d = 4
+[[world.distances.exceptions]]
+pair = ["kitchen", "storage"]
+d = 3
+[[world.distances.exceptions]]
+pair = ["meeting room", "office 1"]
+d = 3
+[[world.distances.exceptions]]
+pair = ["meeting room", "office 3"]
+d = 3
+[[world.distances.exceptions]]
+pair = ["office 1", "office 2"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 1", "storage"]
+d = 4
+[[world.distances.exceptions]]
+pair = ["office 2", "office 3"]
+d = 1
+[[world.distances.exceptions]]
+pair = ["office 2", "storage"]
+d = 3
+
+[world.rooms.kitchen]
+type = "social"
+capacity = 8
+fixtures = ["coffee_machine", "fridge", "microwave"]
+[world.rooms.storage]
+type = "utility"
+capacity = 4
+fixtures = ["shelf", "toolbox"]
+[world.rooms."office 1"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 2"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."office 3"]
+type = "office"
+capacity = 3
+fixtures = ["desk_1", "desk_2", "desk_3"]
+[world.rooms."meeting room"]
+type = "meeting"
+capacity = 10
+fixtures = ["projector", "whiteboard", "conference_table"]
+
+[world.people.Alex]
+home = "office 1"
+role = "dev"
+[world.people.Blake]
+home = "office 1"
+role = "dev"
+[world.people.Casey]
+home = "office 2"
+role = "designer"
+[world.people.Dana]
+home = "office 2"
+role = "pm"
+[world.people.Evan]
+home = "office 3"
+role = "dev"
+[world.people.Frank]
+home = "office 3"
+role = "analyst"
+[world.people.Grace]
+home = "office 1"
+role = "intern"
+[world.people.Heidi]
+home = "office 2"
+role = "writer"
+
+[world.objects.laptop]
+owner = "Alex"
+[world.objects.red_cup]
+owner = "Alex"
+[world.objects.backpack]
+owner = "Blake"
+[world.objects.water_bottle]
+owner = "Blake"
+[world.objects.notebook]
+owner = "Casey"
+[world.objects.pen]
+owner = "Casey"
+[world.objects.headphones]
+owner = "Dana"
+[world.objects.coffee_mug]
+owner = "Evan"
+[world.objects.tablet]
+owner = "Frank"
+[world.objects.jacket]
+owner = "Frank"
+[world.objects.yoga_mat]
+owner = "Grace"
+[world.objects.camera]
+owner = "Heidi"
+
+# ---------------------------------------------------------------------------
+# Activities per room type. `spawns` = temp items that become real entities.
+[[activities.office]]
+text = "works at their desk"
+dur = [20, 200]
+[[activities.office]]
+text = "types on their laptop"
+dur = [15, 120]
+[[activities.office]]
+text = "reads a document"
+dur = [10, 40]
+spawns = ["document"]
+[[activities.office]]
+text = "joins a video call"
+dur = [15, 120]
+[[activities.office]]
+text = "writes notes"
+dur = [10, 30]
+[[activities.office]]
+text = "checks their phone"
+dur = [5, 5]
+spawns = ["phone"]
+
+[[activities.meeting]]
+text = "sits at the table"
+dur = [20, 200]
+[[activities.meeting]]
+text = "talks with a colleague"
+dur = [5, 30]
+[[activities.meeting]]
+text = "points at the screen"
+dur = [5, 10]
+[[activities.meeting]]
+text = "writes on the whiteboard"
+dur = [5, 20]
+[[activities.meeting]]
+text = "listens attentively"
+dur = [10, 120]
+[[activities.meeting]]
+text = "takes notes"
+dur = [10, 30]
+
+[[activities.social]]
+text = "makes coffee"
+dur = [5, 10]
+spawns = ["cup"]
+[[activities.social]]
+text = "makes coffee for colleagues"
+dur = [5, 10]
+spawns = ["two_mugs"]
+[[activities.social]]
+text = "prepares a snack"
+dur = [5, 15]
+spawns = ["plate"]
+[[activities.social]]
+text = "washes a mug"
+dur = [5, 10]
+spawns = ["mug"]
+[[activities.social]]
+text = "chats near the counter"
+dur = [5, 20]
+[[activities.social]]
+text = "fills a water bottle"
+dur = [5, 5]
+[[activities.social]]
+text = "waits by the microwave"
+dur = [5, 10]
+
+[[activities.utility]]
+text = "organizes boxes"
+dur = [10, 30]
+spawns = ["box"]
+[[activities.utility]]
+text = "looks for a tool"
+dur = [5, 15]
+[[activities.utility]]
+text = "checks inventory"
+dur = [5, 15]
+spawns = ["clipboard"]
+[[activities.utility]]
+text = "carries a box"
+dur = [5, 15]
+spawns = ["box"]
+[[activities.utility]]
+text = "sweeps the floor"
+dur = [10, 20]
+spawns = ["broom"]
+[[activities.utility]]
+text = "collects printouts"
+dur = [5, 5]
+
+# ---------------------------------------------------------------------------
+# Stochastic decision layer (design §2 / §10.3)
+[decisions.p_move.base]
+office = 0.60
+social = 0.85
+meeting = 0.70
+utility = 0.55
+
+[[decisions.time_multipliers]]
+window = ["12:00", "12:30"]
+factor = 1.8
+[[decisions.time_multipliers]]
+window = ["13:30", "14:00"]
+factor = 1.5
+[[decisions.time_multipliers]]
+window = ["09:00", "09:30"]
+factor = 0.7
+
+tau = 1.0
+
+[decisions.base_affinity]
+home = 2.0
+office_other = 0.0
+kitchen = 2.1
+meeting = 0.3
+storage = -0.4
+utility = -0.4
+
+[decisions.event_boost]
+value = 0.0
+lead_minutes = 15
+
+[decisions.social_pull]
+per_person = 0.0
+cap = 1.5
+
+personal_carry_p = 0.9
+temp_item_ttl = [15, 30]
+
+[decisions.carry_propensity."prepares a snack"]
+p = 0.7
+item = "plate"
+[decisions.carry_propensity."makes coffee"]
+p = 0.6
+item = "cup"
+[decisions.carry_propensity."makes coffee for colleagues"]
+p = 0.85
+item = "two_mugs"
+[decisions.carry_propensity."reads a document"]
+p = 0.5
+item = "document"
+[decisions.carry_propensity."organizes boxes"]
+p = 0.6
+item = "box"
+[decisions.carry_propensity."carries a box"]
+p = 0.6
+item = "box"
+
+[[decisions.intent_bonus.plate]]
+when = { occupants_gte = 2 }
+add = 4.0
+[[decisions.intent_bonus.plate]]
+when = { room_type = "meeting" }
+add = 2.5
+[[decisions.intent_bonus.two_mugs]]
+when = { room_type = "meeting" }
+add = 4.0
+[[decisions.intent_bonus.two_mugs]]
+when = { room_type = "office", occupants_gte = 1 }
+add = 3.0
+[[decisions.intent_bonus.cup]]
+when = { is_home = true }
+add = 2.0
+[[decisions.intent_bonus.document]]
+when = { room_type = "office", occupants_gte = 1 }
+add = 3.0
+[[decisions.intent_bonus.laptop]]
+when = { room_type = "meeting" }
+add = 2.0
+[[decisions.intent_bonus.box]]
+when = { room = "storage" }
+add = 4.0
+[[decisions.intent_bonus.backpack]]
+when = { is_home = true }
+add = 5.0
+
+# ---------------------------------------------------------------------------
+# Layer 1: scheduled events (v1's get_day_schedule)
+[[schedule]]
+day_index = 0
+start = "09:05"
+end = "09:15"
+room = "meeting room"
+people = "all"
+description = "morning stand-up"
+[[schedule]]
+day_index = 0
+start = "12:00"
+end = "12:30"
+room = "kitchen"
+people_sample = 5
+description = "lunch"
+[[schedule]]
+day_index = 0
+start = "13:00"
+end = "13:30"
+room = "meeting room"
+people_sample = 4
+description = "project review"
+[[schedule]]
+day_index = 1
+start = "09:05"
+end = "09:15"
+room = "meeting room"
+people = "all"
+description = "all-hands demo"
+[[schedule]]
+day_index = 1
+start = "11:00"
+end = "11:30"
+room = "meeting room"
+people_sample = 6
+description = "client presentation"
+[[schedule]]
+day_index = 1
+start = "12:00"
+end = "12:45"
+room = "kitchen"
+people_sample = 6
+description = "team lunch"
+[[schedule]]
+day_index = 2
+start = "09:05"
+end = "09:10"
+room = "meeting room"
+people = "all"
+description = "daily sync"
+[[schedule]]
+day_index = 2
+start = "10:00"
+end = "10:30"
+room = "meeting room"
+people_sample = 3
+description = "architecture discussion"
+[[schedule]]
+day_index = 2
+start = "12:00"
+end = "12:20"
+room = "kitchen"
+people_sample = 3
+description = "quick lunch"
+
+# ---------------------------------------------------------------------------
+[labeling]
+persistence_steps = 6
+
+[output]
+dir = "data/curiosity/datasets/base_v2"
+write_sidecar = true
+write_person_object_trails = true

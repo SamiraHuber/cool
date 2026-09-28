@@ -1,0 +1,4201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SLAM</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: rgba(30, 41, 59, 0.92);
+      --panel-border: rgba(148, 163, 184, 0.15);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .slam-shell {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Top toolbar */
+    .slam-topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--panel-border);
+      backdrop-filter: blur(8px);
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 10;
+    }
+
+    .slam-topbar h4 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .slam-topbar .btn {
+      font-size: 13px;
+      padding: 4px 14px;
+      border-radius: 6px;
+      border: none;
+    }
+
+    .slam-topbar .btn-record { background: var(--bad); color: #fff; }
+    .slam-topbar .btn-record:disabled { background: #7f1d1d; opacity: 0.6; }
+    .slam-topbar .btn-save { background: var(--ok); color: #fff; }
+    .slam-topbar .btn-save:disabled { background: #14532d; opacity: 0.6; }
+    .slam-topbar .btn-load { background: var(--accent); color: #0f172a; }
+    .slam-topbar .btn-stop { background: #475569; color: #fff; }
+    .slam-topbar .btn-hidden { display: none !important; }
+
+    .slam-topbar input, .slam-topbar select {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      font-size: 13px;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .status-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-idle { background: #334155; color: #cbd5e1; }
+    .status-recording { background: var(--bad); color: #fff; }
+    .status-starting { background: #2563eb; color: #fff; }
+    .status-saving { background: #2563eb; color: #fff; }
+    .status-loading { background: #2563eb; color: #fff; }
+    .status-saved { background: var(--ok); color: #fff; }
+    .status-loaded { background: var(--ok); color: #fff; }
+    .status-error { background: var(--bad); color: #fff; }
+    .status-offline { background: #7f1d1d; color: #fff; border: 1px solid var(--bad); }
+
+    .data-age {
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 8px;
+    }
+    .data-age.stale { color: var(--bad); font-weight: 600; }
+
+    /* Map viewport */
+    .slam-viewport {
+      position: relative;
+      overflow: hidden;
+      background: #1e293b;
+    }
+
+    #mapCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    #mapCanvas:active {
+      cursor: grabbing;
+    }
+
+    /* Floating overlays */
+    .map-overlay {
+      position: absolute;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      backdrop-filter: blur(8px);
+      font-size: 12px;
+      line-height: 1.5;
+      pointer-events: auto;
+    }
+
+    .overlay-topright {
+      top: 12px;
+      right: 12px;
+      min-width: 220px;
+    }
+
+    .overlay-bottomright {
+      bottom: 12px;
+      right: 12px;
+    }
+
+    .overlay-topleft {
+      top: 12px;
+      left: 12px;
+      width: 220px;
+      max-height: calc(100% - 24px);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detection-log-list {
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .detection-log-item {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--panel-border);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .detection-log-item .det-class {
+      font-weight: 600;
+      color: #f87171;
+    }
+
+    .detection-log-item .det-meta {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .detection-log-item .det-coords {
+      color: #38bdf8;
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    /* Bottom status bar */
+    .slam-statusbar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 6px 16px;
+      background: var(--panel);
+      border-top: 1px solid var(--panel-border);
+      font-size: 12px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .slam-statusbar .kv {
+      display: flex;
+      gap: 6px;
+    }
+
+    .slam-statusbar .kv .k { color: var(--muted); }
+    .slam-statusbar .kv .v { color: var(--text); font-weight: 500; }
+
+    .divider {
+      width: 1px;
+      height: 16px;
+      background: var(--panel-border);
+    }
+
+    /* Observation popup */
+    .obs-popup {
+      position: absolute;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 10px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      z-index: 100;
+      display: none;
+      min-width: 180px;
+      max-width: 260px;
+      pointer-events: auto;
+    }
+    .obs-popup img {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      display: block;
+    }
+    .obs-popup .obs-title {
+      font-weight: 600;
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .obs-popup .obs-meta {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .obs-popup .obs-close {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .obs-popup .obs-close:hover {
+      color: var(--text);
+    }
+
+    /* Agent chat panel */
+    .agent-panel {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      width: 480px;
+      max-height: 75vh;
+      z-index: 150;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      backdrop-filter: blur(8px);
+      font-size: 12px;
+      line-height: 1.5;
+      pointer-events: auto;
+    }
+    .agent-messages {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+    .agent-bubble {
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.45;
+      max-width: 100%;
+      word-break: break-word;
+    }
+    .agent-bubble-user {
+      background: rgba(13, 110, 253, 0.85);
+      color: #fff;
+      margin-left: auto;
+      align-self: flex-end;
+    }
+    .agent-bubble-agent {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--panel-border);
+      color: var(--text);
+      align-self: flex-start;
+    }
+    .agent-bubble-agent .tool-log {
+      font-size: 10px;
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-top: 6px;
+    }
+    .agent-bubble-agent pre {
+      font-size: 9px;
+      margin: 4px 0 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: var(--muted);
+    }
+    .agent-spinner {
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(148,163,184,0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: agent-spin 0.6s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes agent-spin { to { transform: rotate(360deg); } }
+
+    /* Simple dropdown for extra settings */
+    .settings-dropdown { position: relative; display: inline-block; }
+    .settings-dropdown .dropdown-menu-custom {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 6px 0;
+      min-width: 160px;
+      z-index: 200;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .settings-dropdown.open .dropdown-menu-custom { display: block; }
+    .dropdown-menu-custom button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 12px;
+      padding: 6px 14px;
+      cursor: pointer;
+    }
+    .dropdown-menu-custom button:hover { background: rgba(148,163,184,0.15); }
+  </style>
+</head>
+<body>
+  <div class="slam-shell">
+    <!-- Top toolbar -->
+    <div class="slam-topbar">
+      <h4>🔷 SLAM</h4>
+      <span id="statusPill" class="status-pill status-idle">idle</span>
+      <span id="statusMessage" class="text-muted small">Ready</span>
+
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <button id="btnStart" class="btn btn-record" onclick="sendCommand('start')">● Record</button>
+        <button id="btnStop" class="btn btn-stop" onclick="sendCommand('stop')">■ Stop</button>
+        <div class="vr" style="background: var(--panel-border); height: 20px; opacity: 1;"></div>
+        <span id="saveGroup" class="d-flex align-items-center gap-2 btn-hidden">
+          <button id="btnSave" class="btn btn-save" onclick="sendSave()">💾 Save</button>
+        </span>
+        <select id="loadSelect" style="width: 120px;"></select>
+        <button id="btnLoad" class="btn btn-load" onclick="sendLoad()">📂 Load</button>
+        <button id="btnRecordData" class="btn btn-warning" style="font-size:11px; padding:2px 8px;" onclick="toggleRecordData()" title="Record objects & scenes to map">📝 Log</button>
+        <div class="vr" style="background: var(--panel-border); height: 20px; opacity: 1;"></div>
+        <button class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="resetView()" title="Reset view">⟲</button>
+        <button class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="zoomBy(1.3)" title="Zoom in">+</button>
+        <button class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="zoomBy(0.77)" title="Zoom out">−</button>
+        <div class="vr" style="background: var(--panel-border); height: 20px; opacity: 1;"></div>
+        <button id="btnSetPose" class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="toggleSetPoseMode()" title="Click on map to set robot pose">🎯 Set Pose</button>
+        <button id="btnNavigate" class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="toggleNavigateMode()" title="Click on map to set navigation goal">🧭 Navigate</button>
+        <button id="btnShowDetections" class="btn btn-sm btn-danger" style="font-size:11px; padding:2px 8px;" onclick="toggleShowDetections()" title="Show DynoSAM detections">🔴 Detections</button>
+        <button id="btnShowRobotPath" class="btn btn-sm btn-success" style="font-size:11px; padding:2px 8px;" onclick="toggleShowRobotPath()" title="Show recorded robot path">📍 Path</button>
+        <div class="vr" style="background: var(--panel-border); height: 20px; opacity: 1;"></div>
+        <button id="btnRecordPath" class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="toggleRecordPath()" title="Start/stop path recording">⏺️ Record</button>
+        <button id="btnSavePath" class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px; display:none;" onclick="showSavePathDialog()" title="Save path to database">💾 Save</button>
+        <button id="btnLoadPath" class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="showLoadPathDialog()" title="Load saved path">📂 Paths</button>
+        <div class="vr" style="background: var(--panel-border); height: 20px; opacity: 1;"></div>
+        <button id="btnStartNav" class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="startNavigationMode()" title="Start navigation">▶️ Go</button>
+        <button id="btnStopNavMode" class="btn btn-sm btn-outline-danger" style="font-size:11px; padding:2px 8px; display:none;" onclick="stopNavigationMode()" title="Stop navigation">⏹️ Stop</button>
+        <div class="settings-dropdown" id="extraSettingsDropdown">
+          <button class="btn btn-sm btn-outline-light" style="font-size:11px; padding:2px 8px;" onclick="toggleExtraSettings()" title="Extra settings">⚙️</button>
+          <div class="dropdown-menu-custom">
+            <button onclick="toggleMarkRoomMode(); toggleExtraSettings();">🏠 Mark room</button>
+            <button onclick="clearDetections(); toggleExtraSettings();">🧹 Clear detections</button>
+            <button onclick="sendClearMapData(); toggleExtraSettings();">🧹 Clear map data</button>
+            <button onclick="sendDelete(); toggleExtraSettings();">🗑️ Delete map</button>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1); margin-top:4px;">
+              <a href="/db-admin" style="display:block; padding:4px 0; color:inherit; text-decoration:none; font-size:12px;">🗄️ Database Admin</a>
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1); margin-top:4px;">
+              <label style="font-size:10px; color:var(--muted); display:block; margin-bottom:2px;">Path smoothness (1–20 passes)</label>
+              <input id="pathSmoothness" type="range" min="1" max="20" value="3" style="width:100%;" oninput="drawMap();">
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <label style="font-size:10px; color:var(--muted); display:block; margin-bottom:2px;">Path thickness</label>
+              <input id="pathThickness" type="range" min="1" max="8" value="2" style="width:100%;" oninput="drawMap();">
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <label style="font-size:10px; color:var(--muted); display:block; margin-bottom:2px;">Path end color</label>
+              <input id="pathEndColor" type="color" value="#38bdf8" style="width:100%; height:24px; border:none; background:none; cursor:pointer;" oninput="drawMap();">
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <label style="display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text); cursor:pointer; margin-bottom:2px;">
+                <input id="pathFadeToggle" type="checkbox" onchange="togglePathFadeMode();" style="cursor:pointer;">
+                Fade in (transparent → opaque)
+              </label>
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <label style="display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text); cursor:pointer; margin-bottom:2px;">
+                <input id="pathsOnlyToggle" type="checkbox" onchange="togglePathsOnlyMode();" style="cursor:pointer;">
+                Paths only (hide map)
+              </label>
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <label style="display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text); cursor:pointer; margin-bottom:4px;">
+                <input type="checkbox" checked onchange="toggleShowRooms();" style="cursor:pointer;">
+                Show rooms on map
+              </label>
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <button onclick="saveCanvasPng(false)" style="font-size:10px; width:100%; margin-bottom:4px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); border-radius:4px; padding:2px 8px; cursor:pointer;">💾 Save PNG</button>
+              <button onclick="saveCanvasPng(true)" style="font-size:10px; width:100%; margin-bottom:4px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); border-radius:4px; padding:2px 8px; cursor:pointer;">💾 Save PNG (transparent)</button>
+            </div>
+            <div style="padding:6px 12px; border-top:1px solid rgba(255,255,255,0.1);">
+              <label style="font-size:10px; color:var(--muted); display:block; margin-bottom:4px;">Overlay saved paths</label>
+              <div id="overlayPathsList" style="max-height:120px; overflow-y:auto;">
+                <div style="font-size:10px; color:var(--muted);">Loading…</div>
+              </div>
+              <button onclick="refreshOverlayPathsList()" style="font-size:10px; margin-top:4px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); border-radius:4px; padding:2px 8px; cursor:pointer;">Refresh list</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map viewport -->
+    <div class="slam-viewport" id="viewport">
+      <canvas id="mapCanvas"></canvas>
+
+      <!-- Observation popup (shown when clicking an orange dot) -->
+      <div id="obsPopup" class="obs-popup" style="display:none;">
+        <button class="obs-close" onclick="closeObsPopup()">&times;</button>
+        <img id="obsPopupImg" src="" alt="">
+        <div id="obsPopupTitle" class="obs-title"></div>
+        <div id="obsPopupMeta" class="obs-meta"></div>
+      </div>
+
+      <!-- Detection log overlay (left) -->
+      <div id="detectionLogPanel" class="map-overlay overlay-topleft" style="display:block;">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <strong style="font-size:13px;">🔴 Live Detections</strong>
+          <span id="detectionCount" class="text-muted" style="font-size:11px;">0</span>
+        </div>
+        <div class="d-flex gap-1 mb-2" style="flex-wrap: wrap;">
+          <select id="detectionClassFilter" class="form-select form-select-sm" style="background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:11px; padding:2px 4px; min-width:100px; flex:1;" onchange="onDetectionClassFilterChange()">
+            <option value="">All classes</option>
+          </select>
+          <select id="detectionSourceFilter" class="form-select form-select-sm" style="background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:11px; padding:2px 4px; min-width:112px; flex:1;" onchange="onDetectionSourceFilterChange()">
+            <option value="">All sources</option>
+            <option value="dynosam">DynoSAM</option>
+            <option value="depth">Depth camera</option>
+          </select>
+          <label class="form-check form-check-inline mb-0" style="font-size:11px; color:var(--muted); white-space:nowrap; display:flex; align-items:center; gap:4px;">
+            <input class="form-check-input" type="checkbox" id="detectionTimeFilter" onchange="onDetectionTimeFilterChange()" style="margin-top:0;">
+            Last 10 min
+          </label>
+          <label class="form-check form-check-inline mb-0" style="font-size:11px; color:var(--muted); white-space:nowrap; display:flex; align-items:center; gap:4px;">
+            <input class="form-check-input" type="checkbox" id="detectionPositionFilter" onchange="onDetectionPositionFilterChange()" style="margin-top:0;">
+            With position only
+          </label>
+        </div>
+        <div id="detectionLogList" class="detection-log-list">
+          <div class="text-muted" style="font-size:11px;">No detections</div>
+        </div>
+      </div>
+
+
+      <!-- Agent chat overlay (left) -->
+      <div id="agentPanel" class="agent-panel" style="display:flex;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <strong style="font-size:13px;">🤖 Agent</strong>
+          <div class="btn-group btn-group-sm" role="group">
+            <button id="btnModeChat" class="btn btn-sm btn-primary" style="font-size:11px; padding:2px 8px;" onclick="setAgentMode('chat')">Chat</button>
+            <button id="btnModeSearch" class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:2px 8px;" onclick="setAgentMode('search')" title="Baseline: most recently seen instance, no ownership inference">Object Search</button>
+            <button id="btnModeExplore" class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:2px 8px;" onclick="setAgentMode('explore')">Explore</button>
+          </div>
+        </div>
+        <div class="mb-2">
+          <select id="agentVlmSelect" class="form-select form-select-sm" onchange="changeAgentVlmSelection()" style="background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:12px;">
+            <option>Loading models…</option>
+          </select>
+          <div id="agentVlmHelp" class="text-light" style="font-size:10px; margin-top:4px;">Switch the agent model.</div>
+        </div>
+        <!-- Exploration controls -->
+        <div id="explorationControls" class="mb-2" style="display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span id="explorationStatus" class="text-light" style="font-size:11px;">Stopped</span>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-secondary" style="font-size:11px; padding:2px 6px;" onclick="toggleExploreSettings()" title="Settings">⚙️</button>
+              <button id="btnPauseExploration" class="btn btn-sm btn-warning" style="font-size:11px; padding:2px 10px; display:none;" onclick="togglePauseExploration()">Pause</button>
+              <button id="btnToggleExploration" class="btn btn-sm btn-success" style="font-size:11px; padding:2px 10px;" onclick="toggleExploration()">Start</button>
+            </div>
+          </div>
+          <div id="exploreSettingsPanel" class="mb-2" style="display:none; background:rgba(15,23,42,0.6); border:1px solid var(--panel-border); border-radius:6px; padding:6px 8px;">
+            <div class="text-light mb-1" style="font-size:10px;"><strong>Exploration settings</strong></div>
+            <div class="mb-1">
+              <label class="text-light" style="font-size:10px;">Interval (sec)</label>
+              <input id="exploreIntervalSec" type="number" value="15" min="5" max="300" step="5" style="width:60px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:11px; padding:2px 4px; border-radius:4px;">
+            </div>
+            <div class="mb-1">
+              <label class="text-light" style="font-size:10px;">Strategy</label>
+              <select id="exploreStrategy" style="background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:11px; padding:2px 4px; border-radius:4px;">
+                <option value="v4" selected>v4 (scene-change)</option>
+                <option value="v5">v5 (entity-based)</option>
+                <option value="v6">v6 (entity+objects)</option>
+              </select>
+            </div>
+            <div class="mb-1">
+              <label class="text-light" style="font-size:10px; display:flex; align-items:center; gap:4px;">
+                <input id="exploreAutoNav" type="checkbox" checked style="accent-color:var(--accent);">
+                Auto-navigate
+              </label>
+            </div>
+            <div class="mb-1">
+              <label class="text-light" style="font-size:10px;">Min dwell (min)</label>
+              <input id="exploreMinDwellMin" type="number" value="10" min="1" max="60" step="1" style="width:60px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:11px; padding:2px 4px; border-radius:4px;">
+            </div>
+            <div class="mb-1">
+              <label class="text-light" style="font-size:10px;">Disabled rooms</label>
+              <div id="exploreDisabledRoomsList" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:2px;">
+                <span class="text-muted" style="font-size:10px;">Load a map to see rooms</span>
+              </div>
+            </div>
+          </div>
+          <div class="text-light" style="font-size:10px;">
+            <div>Room: <span id="exploreCurrentRoom" class="text-light">—</span> · Dwell: <span id="exploreDwellMin" class="text-light">—</span> min</div>
+            <div>Step: <span id="exploreStepNum" class="text-light">—</span></div>
+            <div>Last: <span id="exploreLastDecision" class="text-light">—</span></div>
+          </div>
+          <div id="exploreSceneCaption" class="text-light mt-1" style="font-size:10px; font-style:italic; opacity:0.85; max-height:60px; overflow-y:auto;"></div>
+        </div>
+        <div id="agentMessages" class="agent-messages"></div>
+        <div id="chatInputRow" class="input-group">
+          <input id="agentInput" type="text" class="form-control form-control-sm" style="background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:12px;" placeholder="Ask the agent…" onkeydown="if(event.key==='Enter') sendAgentQuestion()">
+          <button class="btn btn-sm btn-primary" onclick="sendAgentQuestion()" id="agentSendBtn">Send</button>
+        </div>
+      </div>
+      <!-- Top-right info overlay -->
+      <div class="map-overlay overlay-topright">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <strong style="font-size:13px;">Map Info</strong>
+          <span id="dataAge" class="data-age">—</span>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span id="offlineBadge" class="status-pill status-offline" style="display:none; font-size:10px; padding:2px 8px;">OFFLINE</span>
+          <span id="fpsIndicator" class="text-muted" style="font-size:11px;">—</span>
+        </div>
+        <div class="kv"><span class="text-muted">Zoom:</span> <span id="infoZoom" class="text-light">—</span></div>
+        <div class="kv"><span class="text-muted">Resolution:</span> <span id="infoResolution" class="text-light">—</span></div>
+        <div class="kv"><span class="text-muted">Dimensions:</span> <span id="infoDimensions" class="text-light">—</span></div>
+        <div class="kv"><span class="text-muted">Origin:</span> <span id="infoOrigin" class="text-light">—</span></div>
+        <hr class="my-2" style="border-color: var(--panel-border);">
+        <div class="kv"><span class="text-muted">Robot X:</span> <span id="infoRobotX" class="text-light">—</span></div>
+        <div class="kv"><span class="text-muted">Robot Y:</span> <span id="infoRobotY" class="text-light">—</span></div>
+        <div class="kv"><span class="text-muted">Yaw:</span> <span id="infoRobotYaw" class="text-light">—</span></div>
+      </div>
+
+      <!-- Navigation goal editor overlay -->
+      <div id="navEditor" class="map-overlay" style="top:12px; left:240px; display:none; min-width:220px; z-index:160;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <strong style="font-size:13px;">Navigation Goal</strong>
+          <button class="btn btn-sm btn-outline-secondary" style="font-size:10px; padding:0px 4px;" onclick="cancelNavigate()">✕</button>
+        </div>
+        <div class="mb-1"><span class="text-muted">X:</span> <span id="navGoalX" class="text-light">—</span></div>
+        <div class="mb-1"><span class="text-muted">Y:</span> <span id="navGoalY" class="text-light">—</span></div>
+        <div class="mb-2">
+          <span class="text-muted">Yaw:</span>
+          <input id="navGoalYaw" type="number" value="0" step="1" style="width:60px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:12px; padding:2px 4px; border-radius:4px;">
+          <span class="text-muted" style="font-size:11px;">°</span>
+        </div>
+        <div id="navPlanInfo" class="mb-2 text-muted" style="font-size:11px;">Click Plan to compute path</div>
+        <div id="navCmdVelInfo" class="mb-2 text-muted" style="font-size:11px;">Latest cmd_vel will appear here</div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button id="btnPlanPath" class="btn btn-sm btn-primary flex-fill" style="font-size:12px;" onclick="planNavPath()">Plan</button>
+          <button id="btnExecuteNav" class="btn btn-sm btn-success flex-fill" style="font-size:12px; display:none;" onclick="executeNavPlan()">Go</button>
+          <button id="btnStopNav" class="btn btn-sm btn-danger flex-fill" style="font-size:12px; display:none;" onclick="stopNavPlan()">Stop</button>
+          <button id="btnAgentAccept" class="btn btn-sm btn-success flex-fill" style="font-size:12px; display:none;" onclick="agentAcceptPath()">Accept Path</button>
+          <button id="btnAgentReject" class="btn btn-sm btn-outline-danger flex-fill" style="font-size:12px; display:none;" onclick="agentRejectPath()">Reject</button>
+        </div>
+      </div>
+
+      <!-- Set-pose editor overlay -->
+      <div id="poseEditor" class="map-overlay" style="top:50%; left:50%; transform:translate(-50%,-50%); display:none; min-width:180px;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <strong style="font-size:13px;">Set Pose</strong>
+          <button class="btn btn-sm btn-outline-secondary" style="font-size:10px; padding:0px 4px;" onclick="cancelSetPose()">✕</button>
+        </div>
+        <div class="mb-1"><span class="text-muted">X:</span> <span id="poseX" class="text-light">—</span></div>
+        <div class="mb-1"><span class="text-muted">Y:</span> <span id="poseY" class="text-light">—</span></div>
+        <div class="mb-2">
+          <span class="text-muted">Yaw:</span>
+          <input id="poseYaw" type="number" value="0" step="1" style="width:60px; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:12px; padding:2px 4px; border-radius:4px;">
+          <span class="text-muted" style="font-size:11px;">°</span>
+        </div>
+        <button class="btn btn-sm btn-success w-100" style="font-size:12px;" onclick="applySetPose()">Apply</button>
+      </div>
+
+      <!-- Room editor overlay -->
+      <div id="roomEditor" class="map-overlay" style="top:12px; left:140px; display:none; min-width:200px; z-index:160;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <strong style="font-size:13px;">Mark Room</strong>
+          <button class="btn btn-sm btn-outline-secondary" style="font-size:10px; padding:0px 4px;" onclick="cancelMarkRoom()">✕</button>
+        </div>
+        <div class="mb-2" id="roomPointStatus" style="font-size:11px; color:var(--muted);">Click 4 points on the map</div>
+        <div class="mb-2">
+          <input id="roomNameInput" type="text" placeholder="Room name" style="width:100%; background:rgba(15,23,42,0.7); border:1px solid var(--panel-border); color:var(--text); font-size:12px; padding:4px 6px; border-radius:4px;">
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-success flex-fill" style="font-size:12px;" onclick="saveRoom()" id="btnSaveRoom" disabled>Save</button>
+          <button class="btn btn-sm btn-outline-secondary flex-fill" style="font-size:12px;" onclick="cancelMarkRoom()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Bottom-right legend -->
+      <div class="map-overlay overlay-bottomright">
+        <div class="mb-1"><span class="legend-dot" style="background:#ffffff; border:1px solid #94a3b8;"></span>Free</div>
+        <div class="mb-1"><span class="legend-dot" style="background:#334155;"></span>Occupied</div>
+        <div class="mb-1"><span class="legend-dot" style="background:#e2e8f0;"></span>Unknown</div>
+        <div class="mb-1"><span class="legend-dot" style="background:rgba(245,158,11,0.5);"></span>Local costmap</div>
+        <div class="mb-1"><span class="legend-dot" style="background:rgba(34,197,94,0.7);"></span>DynoSAM obs</div>
+        <div class="mb-1"><span class="legend-dot" style="background:rgba(56,189,248,0.7);"></span>Depth camera obs</div>
+        <div><span class="legend-dot" style="background:#38bdf8;"></span>Robot</div>
+      </div>
+    </div>
+
+    <!-- Bottom status bar -->
+    <div class="slam-statusbar">
+      <div class="kv"><span class="k">State:</span> <span class="v" id="barState">idle</span></div>
+      <div class="divider"></div>
+      <div class="kv"><span class="k">Saved maps:</span> <span class="v" id="barSavedCount">0</span></div>
+      <div class="divider"></div>
+      <div class="kv"><span class="k">Last update:</span> <span class="v" id="barLastUpdate">—</span></div>
+      <div class="divider"></div>
+      <div class="kv"><span class="k">Robot:</span> <span class="v" id="barRobotConnection">checking…</span></div>
+      <div class="divider"></div>
+      <div class="kv"><span class="k">Battery:</span> <span class="v" id="barBattery">—</span></div>
+      <div class="divider"></div>
+      <div class="kv"><span class="k">cmd_vel:</span> <span class="v" id="barCmdVel">waiting for commands</span></div>
+      <div class="ms-auto text-muted" style="font-size:11px;">Auto-refresh every 2 s • slam_toolbox + Nav2</div>
+    </div>
+  </div>
+
+  <script>
+    let currentState = 'idle';
+    let autoRefreshInterval = null;
+    let lastMapData = null;
+    let lastLocalCostmapData = null;
+    let lastRobotPose = null;
+    let lastDataTimestamp = 0;
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
+    let recordingDataEnabled = true;
+    let showDetections = true;
+    let showRobotPath = true;
+    let showRooms = true;
+    let pathFadeMode = false;
+    let pathsOnlyMode = false;
+    let transparentExport = false;
+    let lastRobotPath = [];
+    let lastRobotPathFetchT = 0;
+    let overlayPaths = {}; // { id: { id, name, points, color } }
+    let isRecordingPath = false;
+    let didAutoStartLog = false;
+    let lastDetections = [];
+    let lastAllDetections = [];
+    let lastHistoricalObservations = [];
+    let detectionClassFilter = '';
+    let detectionSourceFilter = '';
+    let detectionTimeFilter10Min = false;
+    let detectionPositionFilter = false;
+
+    function detectionSourceValue(item) {
+      const source = String(item.position_source || '').toLowerCase();
+      if (source) return source;
+      if (item.has_dynosam_position) return 'dynosam';
+      if (item.has_depth_position) return 'depth';
+      return 'yolo';
+    }
+
+    function detectionSourceLabel(item) {
+      const source = detectionSourceValue(item);
+      if (source === 'dynosam') return 'DynoSAM';
+      if (source === 'depth') return 'Depth camera';
+      if (source === 'yolo') return 'YOLO only';
+      return source || '-';
+    }
+
+    function passesDetectionFilters(item, isHistorical) {
+      if (detectionClassFilter) {
+        const cls = String(item.class_name || item.class_id || '').toLowerCase();
+        if (cls !== detectionClassFilter.toLowerCase()) return false;
+      }
+      if (detectionSourceFilter && detectionSourceValue(item) !== detectionSourceFilter) {
+        return false;
+      }
+      if (detectionTimeFilter10Min) {
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        const t = isHistorical
+          ? (item.created_at ? new Date(item.created_at).getTime() : 0)
+          : (Number(item.last_detected_at) * 1000);
+        if (!Number.isFinite(t) || t < cutoff) return false;
+      }
+      if (detectionPositionFilter) {
+        const source = detectionSourceValue(item);
+        const hasPosition = item.has_dynosam_position || item.has_depth_position || source === 'dynosam' || source === 'depth';
+        if (!hasPosition) return false;
+        if (!Number.isFinite(Number(item.x)) || !Number.isFinite(Number(item.y))) return false;
+      }
+      return true;
+    }
+    let lastLidarRobotPose = null;
+    let agentNavMode = false;
+    let followRobot = true;
+    let zoom = 1.0;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let didDrag = false;
+    let dragLastX = 0;
+    let dragLastY = 0;
+    let setPoseMode = false;
+    let isSettingPoseDirection = false;
+    let pendingPose = null; // {x, y, theta}
+    let viewBounds = null;
+    let mapScaleX = null;
+    let mapScaleY = null;
+    let loadedMapName = '';
+    let navigateMode = false;
+    let isSettingNavigateGoal = false;
+    let pendingNavGoal = null; // {x, y, theta}
+    let plannedPath = null; // array of {x, y} from Nav2
+    let markRoomMode = false;
+    let roomPoints = []; // array of {x, y} world coords, max 4
+    let draggingRoomPointIndex = -1;
+    let lastRooms = []; // fetched rooms for current map
+    let slamStatus = null;
+    let navStatus = null;
+    let lastNavStatusTime = 0;
+    let navStatusInterval = null;
+    let isRefreshingExecutingPath = false;
+    let pendingLoadName = '';
+    const CMD_VEL_STALE_SEC = 3.0;
+
+    function statusClass(state) {
+      const map = {
+        idle: 'status-idle',
+        recording: 'status-recording',
+        starting: 'status-starting',
+        stopping: 'status-starting',
+        saving: 'status-saving',
+        loading: 'status-loading',
+        saved: 'status-saved',
+        loaded: 'status-loaded',
+        error: 'status-error',
+      };
+      return map[state] || 'status-idle';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function formatCmdVelNumber(value) {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric.toFixed(2) : '—';
+    }
+
+    function getCmdVelAgeSec(sample) {
+      const referenceNow = Number(sample?.server_time ?? navStatus?.server_time ?? (Date.now() / 1000));
+      const updatedAt = Number(sample?.updated_at || 0);
+      return updatedAt > 0 ? Math.max(0, referenceNow - updatedAt) : null;
+    }
+
+    function isFreshCmdVelSample(sample) {
+      const ageSec = getCmdVelAgeSec(sample);
+      return ageSec !== null && ageSec <= CMD_VEL_STALE_SEC;
+    }
+
+    function isQueuedNavigationState() {
+      return String(navStatus?.state || '') === 'queued';
+    }
+
+    function formatCmdVelAge(ageSec) {
+      if (ageSec === null) {
+        return '';
+      }
+      return ageSec < 1 ? 'live' : `${ageSec.toFixed(1)}s ago`;
+    }
+
+    function isDebugCmdVelDisplayMode() {
+      if (Boolean(navStatus?.debug_cmd_vel_fallback)) {
+        return true;
+      }
+      const message = String(navStatus?.message || '');
+      return message.includes('debug cmd_vel fallback') || message.includes('Publishing debug cmd_vel');
+    }
+
+    function transformMapLinearToBodyFrame(sample, heading) {
+      const linear = sample?.linear || {};
+      const worldVx = Number(linear.x || 0);
+      const worldVy = Number(linear.y || 0);
+      return {
+        x: (worldVx * Math.cos(heading)) + (worldVy * Math.sin(heading)),
+        y: (-worldVx * Math.sin(heading)) + (worldVy * Math.cos(heading)),
+        z: Number(linear.z || 0),
+      };
+    }
+
+    function getDisplayCmdVelComponents(sample) {
+      const linear = sample?.linear || {};
+      const angular = sample?.angular || {};
+      if (!isDebugCmdVelDisplayMode() || !lastRobotPose?.orientation) {
+        return {
+          linear: {
+            x: Number(linear.x || 0),
+            y: Number(linear.y || 0),
+            z: Number(linear.z || 0),
+          },
+          angular: {
+            x: Number(angular.x || 0),
+            y: Number(angular.y || 0),
+            z: Number(angular.z || 0),
+          },
+          suffix: '',
+        };
+      }
+
+      return {
+        linear: transformMapLinearToBodyFrame(sample, yawFromQuaternion(lastRobotPose.orientation)),
+        angular: {
+          x: Number(angular.x || 0),
+          y: Number(angular.y || 0),
+          z: Number(angular.z || 0),
+        },
+        suffix: ' dummy',
+      };
+    }
+
+    function getRawCmdVelComponents(sample) {
+      const linear = sample?.linear || {};
+      const angular = sample?.angular || {};
+      return {
+        linear: {
+          x: Number(linear.x || 0),
+          y: Number(linear.y || 0),
+          z: Number(linear.z || 0),
+        },
+        angular: {
+          x: Number(angular.x || 0),
+          y: Number(angular.y || 0),
+          z: Number(angular.z || 0),
+        },
+        suffix: '',
+      };
+    }
+
+    function formatCmdVelSummary(cmdVel) {
+      if (!cmdVel || !cmdVel.available) {
+        if (isQueuedNavigationState()) {
+          return Boolean(navStatus?.queue_stale)
+            ? 'queued; executor not responding'
+            : 'queued; waiting for cmd_vel';
+        }
+        return 'waiting for commands';
+      }
+      const ageSec = getCmdVelAgeSec(cmdVel);
+      if (!isFreshCmdVelSample(cmdVel)) {
+        if (isQueuedNavigationState()) {
+          return Boolean(navStatus?.queue_stale)
+            ? 'queued; executor not responding'
+            : 'queued; waiting for cmd_vel';
+        }
+        return `stale ${formatCmdVelAge(ageSec)}`;
+      }
+      const display = getRawCmdVelComponents(cmdVel);
+      const linear = display.linear;
+      const angular = display.angular;
+      const ageLabel = ageSec === null ? '' : ` ${formatCmdVelAge(ageSec)}`;
+      return `vx ${formatCmdVelNumber(linear.x)}  vy ${formatCmdVelNumber(linear.y)}  wz ${formatCmdVelNumber(angular.z)}${display.suffix}${ageLabel}`;
+    }
+
+    function formatLastNonzeroCmdVel(cmdVel) {
+      const sample = cmdVel && cmdVel.last_nonzero;
+      if (!sample) {
+        if (isQueuedNavigationState()) {
+          return 'no fresh motion yet';
+        }
+        return 'none seen yet';
+      }
+      const ageSec = getCmdVelAgeSec(sample);
+      if (!isFreshCmdVelSample(sample)) {
+        if (isQueuedNavigationState()) {
+          return 'no fresh motion yet';
+        }
+        return `stale ${formatCmdVelAge(ageSec)}`;
+      }
+      const display = getRawCmdVelComponents(sample);
+      const linear = display.linear;
+      const angular = display.angular;
+      const ageLabel = ageSec === null ? '' : ` ${formatCmdVelAge(ageSec)}`;
+      return `vx ${formatCmdVelNumber(linear.x)}  vy ${formatCmdVelNumber(linear.y)}  wz ${formatCmdVelNumber(angular.z)}${display.suffix}${ageLabel}`;
+    }
+
+    function formatRobotConnection(robotConnection) {
+      if (!robotConnection) {
+        return 'unknown';
+      }
+      const connected = Boolean(robotConnection.connected);
+      const ageSec = Number(robotConnection.age_sec);
+      if (connected) {
+        return Number.isFinite(ageSec) ? `connected (${ageSec.toFixed(1)}s)` : 'connected';
+      }
+      if (Number.isFinite(ageSec)) {
+        return `disconnected (${ageSec.toFixed(1)}s stale)`;
+      }
+      return 'disconnected';
+    }
+
+    function updateCmdVelDisplays(cmdVel) {
+      const summary = formatCmdVelSummary(cmdVel);
+      const lastNonzero = formatLastNonzeroCmdVel(cmdVel);
+      const navCmdVel = document.getElementById('navCmdVelInfo');
+      if (navCmdVel) {
+        navCmdVel.textContent = `cmd_vel latest: ${summary} | last non-zero: ${lastNonzero}`;
+      }
+      const barCmdVel = document.getElementById('barCmdVel');
+      if (barCmdVel) {
+        barCmdVel.textContent = `latest ${summary} | last nz ${lastNonzero}`;
+      }
+    }
+
+    function updateRobotConnectionDisplay(robotConnection) {
+      const barRobotConnection = document.getElementById('barRobotConnection');
+      if (barRobotConnection) {
+        barRobotConnection.textContent = formatRobotConnection(robotConnection);
+      }
+    }
+
+    function updateBatteryDisplay(battery) {
+      const barBattery = document.getElementById('barBattery');
+      if (!barBattery) return;
+      if (!battery || !Number.isFinite(Number(battery.charge_percentage))) {
+        barBattery.textContent = '—';
+        barBattery.style.color = '';
+        return;
+      }
+      const pct = Number(battery.charge_percentage);
+      const color = pct >= 50 ? '#22c55e' : (pct >= 20 ? '#f97316' : '#ef4444');
+      barBattery.textContent = `${pct.toFixed(0)}%`;
+      barBattery.style.color = color;
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      return res.json();
+    }
+
+    function mapDataSignature(mapData) {
+      if (!mapData || !mapData.header || !mapData.info) return '';
+      const stamp = mapData.header.stamp || {};
+      const origin = mapData.info.origin?.position || {};
+      return [
+        stamp.sec ?? '',
+        stamp.nanosec ?? '',
+        mapData.info.width ?? '',
+        mapData.info.height ?? '',
+        mapData.info.resolution ?? '',
+        origin.x ?? '',
+        origin.y ?? '',
+      ].join(':');
+    }
+
+    async function loadStatus() {
+      try {
+        const [data, navigationData, toolboxPersistence] = await Promise.all([
+          fetchJson('/api/slam/status'),
+          fetchJson('/api/navigation/status?_=' + Date.now()),
+          fetchJson('/api/toolbox_map/persistence?_=' + Date.now()).catch(() => null),
+        ]);
+        currentState = data.state || 'idle';
+        slamStatus = data;
+        navStatus = navigationData;
+        lastNavStatusTime = Date.now();
+        updateCmdVelDisplays(navigationData.cmd_vel);
+        updateRobotConnectionDisplay(data.robot_connection);
+        updateBatteryDisplay(data.battery);
+
+        const persistenceMaps = Array.isArray(toolboxPersistence?.maps) ? toolboxPersistence.maps : null;
+        const maps = persistenceMaps || (Array.isArray(data.saved_maps) ? data.saved_maps : []);
+
+        const pill = document.getElementById('statusPill');
+        pill.className = `status-pill ${statusClass(currentState)}`;
+        pill.textContent = currentState;
+        document.getElementById('statusMessage').textContent = data.message || 'Ready';
+        document.getElementById('barState').textContent = currentState;
+        document.getElementById('barSavedCount').textContent = maps.length;
+        document.getElementById('barLastUpdate').textContent = new Date().toLocaleTimeString();
+
+        const select = document.getElementById('loadSelect');
+        const currentValue = select.value;
+        const isInteracting = document.activeElement === select;
+        select.innerHTML = maps.length
+          ? maps.map(m => `<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('')
+          : '<option value="">No saved maps</option>';
+        const toolboxStatus = toolboxPersistence?.status || {};
+        const knownMapNames = new Set(maps.map(m => m.name));
+        const persistenceActiveName = toolboxPersistence?.active_name;
+        const activeMap =
+          (persistenceActiveName && knownMapNames.has(persistenceActiveName) ? persistenceActiveName : '') ||
+          data.loaded_name ||
+          data.saved_name ||
+          toolboxStatus.name ||
+          '';
+        loadedMapName =
+          (persistenceActiveName && knownMapNames.has(persistenceActiveName) ? persistenceActiveName : '') ||
+          data.loaded_name ||
+          pendingLoadName ||
+          '';
+        if (isInteracting && currentValue && maps.some(m => m.name === currentValue)) {
+          // Preserve user's manual selection while the dropdown is open/focused
+          select.value = currentValue;
+        } else if (pendingLoadName && maps.some(m => m.name === pendingLoadName)) {
+          select.value = pendingLoadName;
+        } else if (activeMap && maps.some(m => m.name === activeMap)) {
+          select.value = activeMap;
+        } else if (currentValue && maps.some(m => m.name === currentValue)) {
+          select.value = currentValue;
+        }
+
+        const isBusy = ['starting', 'stopping', 'saving', 'loading'].includes(currentState);
+        document.getElementById('btnStart').disabled = isBusy || currentState === 'recording';
+        document.getElementById('btnStop').disabled = isBusy;
+        document.getElementById('btnStop').classList.toggle('btn-hidden', currentState !== 'recording');
+        document.getElementById('saveGroup').classList.toggle('btn-hidden', currentState !== 'recording');
+        document.getElementById('btnSave').disabled = isBusy;
+        document.getElementById('btnLoad').disabled = isBusy;
+
+        const recordingEnabled = toolboxPersistence?.recording_enabled === true;
+        const hasActiveMap = !!(toolboxPersistence?.active_name || loadedMapName || document.getElementById('loadSelect').value);
+        recordingDataEnabled = recordingEnabled;
+        const btnRecordData = document.getElementById('btnRecordData');
+        btnRecordData.disabled = isBusy || !hasActiveMap;
+        if (recordingEnabled) {
+          btnRecordData.classList.remove('btn-outline-warning');
+          btnRecordData.classList.add('btn-warning');
+        } else {
+          btnRecordData.classList.remove('btn-warning');
+          btnRecordData.classList.add('btn-outline-warning');
+        }
+
+        // Auto-start log recording on first load if a map is present
+        if (!didAutoStartLog && hasActiveMap && !recordingEnabled && !isBusy) {
+          didAutoStartLog = true;
+          const mapName = toolboxPersistence?.active_name || loadedMapName || document.getElementById('loadSelect').value;
+          if (mapName) {
+            fetch(`/api/toolbox_map/start_recording?name=${encodeURIComponent(mapName)}`, { method: 'POST' })
+              .then(() => loadStatus())
+              .catch(() => {});
+          }
+        }
+
+        if (lastMapData) {
+          drawMap();
+        }
+      } catch (err) {
+        document.getElementById('statusPill').className = 'status-pill status-error';
+        document.getElementById('statusPill').textContent = 'offline';
+        document.getElementById('statusMessage').textContent = String(err);
+      }
+    }
+
+    async function loadMapData() {
+      try {
+        const mapName = loadedMapName || document.getElementById('loadSelect').value || '';
+        const historicalObsUrl = mapName
+          ? `/api/slam/historical_observations?minutes=1440&building=${encodeURIComponent(mapName)}`
+          : '/api/slam/historical_observations?minutes=1440';
+        const [mapData, localCostmapData, robotPose, lidarMap, historicalObs] = await Promise.all([
+          fetchJson('/api/slam/map').catch(() => null),
+          fetchJson('/api/slam/local_costmap').catch(() => null),
+          fetchJson('/api/slam/robot_pose').catch(() => null),
+          fetchJson('/api/lidar_occupancy_map').catch(() => null),
+          fetchJson(historicalObsUrl).catch(() => null),
+        ]);
+        lastMapData = mapData;
+        lastLocalCostmapData = localCostmapData;
+        lastRobotPose = robotPose;
+        let rawDetections = (lidarMap && Array.isArray(lidarMap.detections)) ? lidarMap.detections : [];
+        let rawHistorical = Array.isArray(historicalObs) ? historicalObs : [];
+        lastAllDetections = rawDetections;
+        lastDetections = rawDetections;
+        lastLidarRobotPose = (lidarMap && lidarMap.robot) ? lidarMap.robot : null;
+        lastHistoricalObservations = rawHistorical;
+        lastDataTimestamp = Date.now();
+        updateDetectionLog();
+        drawMap();
+        fetchRooms().then(() => { if (lastMapData) drawMap(); });
+      } catch (err) {
+        // Silently ignore - map may not be available yet
+      }
+    }
+
+    async function waitForLoadedMap(name, previousSignature, previousLoadedName, requestCreatedAt, timeoutMs = 30000) {
+      const deadline = Date.now() + timeoutMs;
+      let lastStatus = null;
+      while (Date.now() < deadline) {
+        const persistence = await fetchJson('/api/toolbox_map/persistence?_=' + Date.now());
+        const status = persistence?.status || {};
+        lastStatus = status;
+        const statusUpdatedAt = Number(status.updated_at || 0);
+        const isCurrentRequest = !requestCreatedAt || statusUpdatedAt >= requestCreatedAt;
+        if (isCurrentRequest && status.state === 'error') {
+          throw new Error(status.error || status.message || `Loading ${name} failed`);
+        }
+        const loadedName = persistence?.active_name || status.name || '';
+        if (isCurrentRequest && status.state === 'loaded' && loadedName === name) {
+          await loadMapData();
+          return status;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      throw new Error(lastStatus?.message || `Timed out waiting for "${name}" to finish loading`);
+    }
+
+    function yawFromQuaternion(q) {
+      return Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+    }
+
+    function cmdVelMagnitude(sample) {
+      if (!sample) {
+        return 0;
+      }
+      const linear = sample.linear || {};
+      const angular = sample.angular || {};
+      return Math.hypot(
+        Number(linear.x || 0),
+        Number(linear.y || 0),
+        Number(linear.z || 0),
+        Number(angular.x || 0),
+        Number(angular.y || 0),
+        Number(angular.z || 0),
+      );
+    }
+
+    function getCmdVelOverlay(info) {
+      const cmdVel = navStatus && navStatus.cmd_vel;
+      if (!cmdVel || !cmdVel.available) {
+        return null;
+      }
+
+      let sample = cmdVel;
+      let label = 'cmd_vel';
+      if (!isFreshCmdVelSample(sample)) {
+        sample = null;
+      } else if (cmdVelMagnitude(sample) <= 1e-3) {
+        const lastNonzero = cmdVel.last_nonzero;
+        if (lastNonzero && isFreshCmdVelSample(lastNonzero) && cmdVelMagnitude(lastNonzero) > 1e-3) {
+          sample = lastNonzero;
+          label = 'last cmd_vel';
+        } else {
+          label = 'cmd_vel idle';
+        }
+      }
+
+      if (!sample) {
+        return null;
+      }
+
+      if (lastRobotPose && lastRobotPose.position && lastRobotPose.orientation) {
+        return {
+          anchor: {
+            x: Number(lastRobotPose.position.x || 0),
+            y: Number(lastRobotPose.position.y || 0),
+            yaw: yawFromQuaternion(lastRobotPose.orientation),
+          },
+          label,
+          sample,
+          mapFrameLinear: false,
+        };
+      }
+
+      if (!info || !info.origin || !info.origin.position) {
+        return null;
+      }
+
+      const resolution = Number(info.resolution || 0);
+      const widthMeters = Number(info.width || 0) * resolution;
+      const heightMeters = Number(info.height || 0) * resolution;
+      return {
+        anchor: {
+          x: Number(info.origin.position.x || 0) + (widthMeters / 2),
+          y: Number(info.origin.position.y || 0) + (heightMeters / 2),
+          yaw: 0,
+        },
+        label,
+        sample,
+        mapFrameLinear: false,
+      };
+    }
+
+    function drawOfflineCmdVelOverlay(ctx, overlay, scaleX, scaleY, width, height, minX, maxX) {
+      if (!overlay || !overlay.anchor || !overlay.sample) {
+        return;
+      }
+
+      const ax = scaleX(overlay.anchor.x);
+      const ay = scaleY(overlay.anchor.y);
+      const linear = overlay.sample.linear || {};
+      const angular = overlay.sample.angular || {};
+      const vxBody = Number(linear.x || 0);
+      const vyBody = Number(linear.y || 0);
+      const wz = Number(angular.z || 0);
+      const heading = Number(overlay.anchor.yaw || 0);
+      const usesMapFrameLinear = Boolean(overlay.mapFrameLinear);
+      const worldVx = usesMapFrameLinear
+        ? vxBody
+        : ((vxBody * Math.cos(heading)) - (vyBody * Math.sin(heading)));
+      const worldVy = usesMapFrameLinear
+        ? vyBody
+        : ((vxBody * Math.sin(heading)) + (vyBody * Math.cos(heading)));
+      const linearMag = Math.hypot(worldVx, worldVy);
+      const pixelsPerMeter = width / Math.max(1e-6, maxX - minX);
+      const arrowPx = linearMag > 1e-3
+        ? Math.max(18, Math.min(70, linearMag * pixelsPerMeter * 3.0))
+        : 0;
+
+      ctx.save();
+
+      ctx.beginPath();
+      ctx.arc(ax, ay, 9, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.95)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      ctx.arc(ax, ay, 4, 0, 2 * Math.PI);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+
+      if (arrowPx > 0) {
+        const dirX = worldVx / linearMag;
+        const dirY = worldVy / linearMag;
+        const arrowX = ax + (dirX * arrowPx);
+        const arrowY = ay - (dirY * arrowPx);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(arrowX, arrowY);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        const headLen = 7;
+        const arrowAngle = Math.atan2(ay - arrowY, arrowX - ax);
+        ctx.beginPath();
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(arrowX - headLen * Math.cos(arrowAngle - Math.PI / 6), arrowY + headLen * Math.sin(arrowAngle - Math.PI / 6));
+        ctx.lineTo(arrowX - headLen * Math.cos(arrowAngle + Math.PI / 6), arrowY + headLen * Math.sin(arrowAngle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fillStyle = '#f59e0b';
+        ctx.fill();
+      }
+
+      if (Math.abs(wz) > 1e-3) {
+        const arcRadius = 15;
+        const startAngle = wz > 0 ? -Math.PI * 0.9 : Math.PI * 0.1;
+        const endAngle = wz > 0 ? Math.PI * 0.25 : Math.PI * 1.25;
+        ctx.beginPath();
+        ctx.arc(ax, ay, arcRadius, startAngle, endAngle, wz < 0);
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        const endX = ax + Math.cos(endAngle) * arcRadius;
+        const endY = ay + Math.sin(endAngle) * arcRadius;
+        const tangent = endAngle + (wz > 0 ? Math.PI / 2 : -Math.PI / 2);
+        const headLen = 5;
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(endX - headLen * Math.cos(tangent - Math.PI / 6), endY - headLen * Math.sin(tangent - Math.PI / 6));
+        ctx.lineTo(endX - headLen * Math.cos(tangent + Math.PI / 6), endY - headLen * Math.sin(tangent + Math.PI / 6));
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(251, 191, 36, 0.95)';
+        ctx.fill();
+      }
+
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#fde68a';
+      ctx.fillText(overlay.label, ax + 12, Math.max(14, ay - 12));
+
+      ctx.restore();
+    }
+
+    function drawGrid(ctx, width, height, minX, minY, maxX, maxY, scaleX, scaleY) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+      ctx.lineWidth = 1;
+
+      const step = Math.max(0.5, Math.round((maxX - minX) / 10 * 2) / 2);
+      const startX = Math.ceil(minX / step) * step;
+      const startY = Math.ceil(minY / step) * step;
+
+      for (let x = startX; x <= maxX; x += step) {
+        const sx = scaleX(x);
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, height);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(x.toFixed(1), sx, height - 4);
+      }
+
+      for (let y = startY; y <= maxY; y += step) {
+        const sy = scaleY(y);
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(width, sy);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(y.toFixed(1), 4, sy - 2);
+      }
+
+      ctx.restore();
+    }
+
+    function drawOccupancyLayer(ctx, data, info, minX, minY, maxX, maxY, width, height, colorMode = 'map') {
+      if (!data || !Array.isArray(data.data) || data.info.width <= 0 || data.info.height <= 0) return;
+
+      const resolution = data.info.resolution;
+      const gridW = data.info.width;
+      const gridH = data.info.height;
+      const originX = data.info.origin.position.x;
+      const originY = data.info.origin.position.y;
+
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = gridW;
+      offCanvas.height = gridH;
+      const offCtx = offCanvas.getContext('2d');
+      const imgData = offCtx.createImageData(gridW, gridH);
+      const d = imgData.data;
+      const values = data.data;
+
+      for (let row = 0; row < gridH; row++) {
+        const flippedRow = gridH - 1 - row;
+        const rowOffset = flippedRow * gridW;
+        for (let col = 0; col < gridW; col++) {
+          const value = Number(values[row * gridW + col] ?? -1);
+          const idx = (rowOffset + col) * 4;
+
+          if (colorMode === 'map') {
+            if (value === 0) {
+              d[idx] = 255; d[idx + 1] = 255; d[idx + 2] = 255; d[idx + 3] = 255;
+            } else if (value > 0) {
+              const intensity = Math.max(30, 60 + (value / 100) * 60);
+              d[idx] = intensity; d[idx + 1] = intensity; d[idx + 2] = intensity + 10; d[idx + 3] = 255;
+            } else {
+              d[idx] = 226; d[idx + 1] = 232; d[idx + 2] = 240; d[idx + 3] = 255;
+            }
+          } else if (colorMode === 'local_costmap') {
+            // Draw full cost gradient for localization feedback.
+            // Free space stays transparent so the map/robot show through.
+            if (value >= 99) {
+              // Lethal / collision — red
+              d[idx] = 239; d[idx + 1] = 68; d[idx + 2] = 68; d[idx + 3] = 180;
+            } else if (value > 50) {
+              // High inflation — dark orange
+              d[idx] = 249; d[idx + 1] = 115; d[idx + 2] = 22; d[idx + 3] = 140;
+            } else if (value > 0) {
+              // Low inflation — light orange/yellow
+              d[idx] = 245; d[idx + 1] = 158; d[idx + 2] = 11; d[idx + 3] = 100;
+            }
+          }
+        }
+      }
+      offCtx.putImageData(imgData, 0, 0);
+
+      const q = info?.origin?.orientation || { x: 0, y: 0, z: 0, w: 1 };
+      const yaw = Math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+      const ppmX = width / (maxX - minX);
+      const ppmY = height / (maxY - minY);
+
+      if (Math.abs(yaw) < 0.001) {
+        // Fast path: axis-aligned
+        const sx0 = ((originX - minX) / (maxX - minX)) * width;
+        const sy0 = height - ((originY + gridH * resolution - minY) / (maxY - minY)) * height;
+        const sx1 = ((originX + gridW * resolution - minX) / (maxX - minX)) * width;
+        const sy1 = height - ((originY - minY) / (maxY - minY)) * height;
+        ctx.drawImage(offCanvas, sx0, sy0, sx1 - sx0, sy1 - sy0);
+      } else {
+        // Rotated costmap (e.g. local costmap after set-pose transform)
+        const cosYaw = Math.cos(yaw);
+        const sinYaw = Math.sin(yaw);
+        const a = resolution * ppmX * cosYaw;
+        const c = resolution * ppmX * sinYaw;
+        const e = ((originX - minX) / (maxX - minX)) * width - gridH * resolution * ppmX * sinYaw;
+        const b = -resolution * ppmY * sinYaw;
+        const d = resolution * ppmY * cosYaw;
+        const f = height - ((originY - minY) / (maxY - minY)) * height - gridH * resolution * ppmY * cosYaw;
+        ctx.save();
+        ctx.setTransform(a, b, c, d, e, f);
+        ctx.drawImage(offCanvas, 0, 0);
+        ctx.restore();
+      }
+    }
+
+    function smoothPathPoints(points, passes = 1) {
+      if (points.length < 3) return points.slice();
+      // 5-point Gaussian kernel [1, 4, 6, 4, 1] / 16
+      const kernel = [1, 4, 6, 4, 1];
+      const norm = 16;
+      let pts = points.map(p => ({ x: p.x, y: p.y }));
+      for (let pass = 0; pass < passes; pass++) {
+        const smoothed = new Array(pts.length);
+        for (let i = 0; i < pts.length; i++) {
+          let sx = 0, sy = 0;
+          for (let k = -2; k <= 2; k++) {
+            const idx = i + k;
+            // Mirror at boundaries so endpoints don't get pinned
+            const mirroredIdx = idx < 0 ? -idx : (idx >= pts.length ? 2 * (pts.length - 1) - idx : idx);
+            const w = kernel[k + 2];
+            sx += pts[mirroredIdx].x * w;
+            sy += pts[mirroredIdx].y * w;
+          }
+          smoothed[i] = { x: sx / norm, y: sy / norm };
+        }
+        pts = smoothed;
+      }
+      return pts;
+    }
+
+    function drawMap() {
+      const canvas = document.getElementById('mapCanvas');
+      const wrap = document.getElementById('viewport');
+      const dpr = window.devicePixelRatio || 1;
+      const width = wrap.clientWidth;
+      const height = wrap.clientHeight;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (!transparentExport) {
+        ctx.fillStyle = pathsOnlyMode ? '#ffffff' : '#1e293b';
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      // Build combined path points early so we can use them for bounds
+      const combinedPoints = [];
+      if (showRobotPath) {
+        for (const p of lastRobotPath) {
+          if (Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) {
+            combinedPoints.push(p);
+          }
+        }
+      }
+      for (const op of Object.values(overlayPaths)) {
+        for (const p of (op.points || [])) {
+          if (Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) {
+            combinedPoints.push(p);
+          }
+        }
+      }
+
+      if (!lastMapData) {
+        ctx.fillStyle = pathsOnlyMode ? '#94a3b8' : '#64748b';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No map data available yet.', width / 2, height / 2);
+        ctx.font = '12px sans-serif';
+        ctx.fillText('Start recording to build a map.', width / 2, height / 2 + 24);
+        updateInfoPanel(null, null);
+        return;
+      }
+
+      const info = lastMapData ? lastMapData.info : null;
+      const resolution = info ? info.resolution : 0.05;
+      const gridW = info ? info.width : 0;
+      const gridH = info ? info.height : 0;
+      const originX = info ? info.origin.position.x : 0;
+      const originY = info ? info.origin.position.y : 0;
+
+      // Compute base view bounds
+      let baseMinX, baseMinY, baseMaxX, baseMaxY;
+      if (followRobot && lastRobotPose) {
+        const ppm = Math.min(width, height) / 16;
+        const halfW = width / 2 / ppm;
+        const halfH = height / 2 / ppm;
+        const rx = lastRobotPose.position.x;
+        const ry = lastRobotPose.position.y;
+        baseMinX = rx - halfW;
+        baseMinY = ry - halfH;
+        baseMaxX = rx + halfW;
+        baseMaxY = ry + halfH;
+      } else {
+        const pad = Math.max(2.0, resolution * 10);
+        baseMinX = originX - pad;
+        baseMinY = originY - pad;
+        baseMaxX = originX + gridW * resolution + pad;
+        baseMaxY = originY + gridH * resolution + pad;
+      }
+
+      // Apply zoom and pan
+      const baseCenterX = (baseMinX + baseMaxX) / 2;
+      const baseCenterY = (baseMinY + baseMaxY) / 2;
+      const baseWidth = baseMaxX - baseMinX;
+      const baseHeight = baseMaxY - baseMinY;
+      const viewWidth = baseWidth / zoom;
+      const viewHeight = baseHeight / zoom;
+      const ppmX = width / viewWidth;
+      const ppmY = height / viewHeight;
+      const viewCenterX = baseCenterX - panX / ppmX;
+      const viewCenterY = baseCenterY + panY / ppmY;
+      const minX = viewCenterX - viewWidth / 2;
+      const maxX = viewCenterX + viewWidth / 2;
+      const minY = viewCenterY - viewHeight / 2;
+      const maxY = viewCenterY + viewHeight / 2;
+
+      const scaleX = x => ((x - minX) / (maxX - minX)) * width;
+      const scaleY = y => height - ((y - minY) / (maxY - minY)) * height;
+      viewBounds = { minX, maxX, minY, maxY, width, height };
+      mapScaleX = scaleX;
+      mapScaleY = scaleY;
+      const cmdVelOverlay = !pathsOnlyMode ? getCmdVelOverlay(info) : null;
+
+      if (!pathsOnlyMode) {
+        // Draw grid
+        drawGrid(ctx, width, height, minX, minY, maxX, maxY, scaleX, scaleY);
+
+        // Draw map occupancy grid
+        if (lastMapData) {
+          drawOccupancyLayer(ctx, lastMapData, info, minX, minY, maxX, maxY, width, height, 'map');
+        }
+      }
+
+      if (!pathsOnlyMode) {
+        // Draw axes
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, height - 30);
+        ctx.lineTo(width - 10, height - 30);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(40, 10);
+        ctx.lineTo(40, height - 30);
+        ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'end';
+        ctx.fillText('x', width - 10, height - 14);
+        ctx.textAlign = 'start';
+        ctx.fillText('y', 24, 20);
+      }
+
+      // Draw robot (always at screen center when following)
+      if (!pathsOnlyMode && lastRobotPose) {
+        const rx = scaleX(lastRobotPose.position.x);
+        const ry = scaleY(lastRobotPose.position.y);
+        const yaw = yawFromQuaternion(lastRobotPose.orientation);
+
+        // Local costmap footprint hint (light circle)
+        ctx.beginPath();
+        ctx.arc(rx, ry, 40, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.06)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Robot body
+        ctx.beginPath();
+        ctx.arc(rx, ry, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = '#38bdf8';
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Heading arrow
+        const arrowLen = 18;
+        const arrowX = rx + Math.cos(yaw) * arrowLen;
+        const arrowY = ry - Math.sin(yaw) * arrowLen;
+        ctx.beginPath();
+        ctx.moveTo(rx, ry);
+        ctx.lineTo(arrowX, arrowY);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Arrow head
+        const headLen = 6;
+        const angle = Math.atan2(ry - arrowY, arrowX - rx);
+        ctx.beginPath();
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(arrowX - headLen * Math.cos(angle - Math.PI / 6), arrowY + headLen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(arrowX - headLen * Math.cos(angle + Math.PI / 6), arrowY + headLen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fillStyle = '#38bdf8';
+        ctx.fill();
+      }
+
+      // Draw local costmap overlay on top of the robot so inflated / lethal
+      // cells are clearly visible for manual localization alignment.
+      if (!pathsOnlyMode) {
+        drawOccupancyLayer(ctx, lastLocalCostmapData, lastLocalCostmapData?.info, minX, minY, maxX, maxY, width, height, 'local_costmap');
+      }
+
+      // combinedPoints was already built earlier in this function.
+      if (combinedPoints.length > 1) {
+        combinedPoints.sort((a, b) => (a.t || 0) - (b.t || 0));
+        const step = Math.max(1, Math.floor(combinedPoints.length / 2000));
+        const thinned = [];
+        for (let i = 0; i < combinedPoints.length; i += step) {
+          thinned.push(combinedPoints[i]);
+        }
+        if (thinned[thinned.length - 1] !== combinedPoints[combinedPoints.length - 1]) {
+          thinned.push(combinedPoints[combinedPoints.length - 1]);
+        }
+
+        const passes = Math.max(1, Math.min(20, parseInt(document.getElementById('pathSmoothness')?.value || '1', 10)));
+        const smooth = smoothPathPoints(thinned, passes);
+        const total = smooth.length - 1;
+        const endColorHex = document.getElementById('pathEndColor')?.value || '#38bdf8';
+        const endR = parseInt(endColorHex.slice(1, 3), 16);
+        const endG = parseInt(endColorHex.slice(3, 5), 16);
+        const endB = parseInt(endColorHex.slice(5, 7), 16);
+
+        const lineThickness = Math.max(1, Math.min(8, parseInt(document.getElementById('pathThickness')?.value || '2', 10)));
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (let i = 0; i < total; i++) {
+          const t = i / total;
+          if (pathFadeMode) {
+            const alpha = t * 0.95 + 0.05;
+            ctx.strokeStyle = `rgba(${endR}, ${endG}, ${endB}, ${alpha.toFixed(3)})`;
+          } else {
+            const r = Math.round(endR * t);
+            const g = Math.round(endG * t);
+            const b = Math.round(endB * t);
+            ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+          }
+          ctx.lineWidth = lineThickness;
+          ctx.beginPath();
+          ctx.moveTo(scaleX(smooth[i].x), scaleY(smooth[i].y));
+          ctx.lineTo(scaleX(smooth[i + 1].x), scaleY(smooth[i + 1].y));
+          ctx.stroke();
+        }
+
+        // Start marker (oldest position overall)
+        ctx.beginPath();
+        ctx.arc(scaleX(smooth[0].x), scaleY(smooth[0].y), 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // End marker (newest position overall)
+        const end = smooth[smooth.length - 1];
+        ctx.beginPath();
+        ctx.arc(scaleX(end.x), scaleY(end.y), 5, 0, 2 * Math.PI);
+        ctx.fillStyle = endColorHex;
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Draw DynoSAM detections (live)
+      if (!pathsOnlyMode && showDetections && lastAllDetections.length > 0 && lastRobotPose) {
+        for (const det of lastAllDetections) {
+          if (!passesDetectionFilters(det, false)) continue;
+          if (!Number.isFinite(Number(det.x)) || !Number.isFinite(Number(det.y))) continue;
+          const wx = det.x;
+          const wy = det.y;
+          if (wx < minX || wx > maxX || wy < minY || wy > maxY) continue;
+          const px = scaleX(wx);
+          const py = scaleY(wy);
+
+          // Outer ring
+          ctx.beginPath();
+          ctx.arc(px, py, 13, 0, 2 * Math.PI);
+          ctx.strokeStyle = 'rgba(220, 38, 38, 0.35)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Red circle
+          ctx.beginPath();
+          ctx.arc(px, py, 7, 0, 2 * Math.PI);
+          ctx.fillStyle = '#dc2626';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Label
+          const label = det.class_name || (Number.isFinite(Number(det.class_id)) && Number(det.class_id) >= 0 ? `class ${det.class_id}` : 'object');
+          ctx.fillStyle = '#f87171';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(label, px, py + 14);
+        }
+      }
+
+      // Draw historical observations from DB
+      if (!pathsOnlyMode && showDetections && lastHistoricalObservations.length > 0) {
+        for (const obs of lastHistoricalObservations) {
+          if (!passesDetectionFilters(obs, true)) continue;
+          if (!Number.isFinite(Number(obs.x)) || !Number.isFinite(Number(obs.y))) continue;
+          const wx = obs.x;
+          const wy = obs.y;
+          if (wx < minX || wx > maxX || wy < minY || wy > maxY) continue;
+          const px = scaleX(wx);
+          const py = scaleY(wy);
+          const source = detectionSourceValue(obs);
+          const dotFill = source === 'dynosam'
+            ? 'rgba(34, 197, 94, 0.6)'
+            : (source === 'depth' ? 'rgba(56, 189, 248, 0.6)' : 'rgba(245, 158, 11, 0.55)');
+          const dotStroke = source === 'dynosam'
+            ? 'rgba(34, 197, 94, 0.9)'
+            : (source === 'depth' ? 'rgba(56, 189, 248, 0.9)' : 'rgba(245, 158, 11, 0.85)');
+          const labelColor = source === 'dynosam'
+            ? 'rgba(34, 197, 94, 0.75)'
+            : (source === 'depth' ? 'rgba(56, 189, 248, 0.75)' : 'rgba(245, 158, 11, 0.7)');
+
+          // Small source-colored dot
+          ctx.beginPath();
+          ctx.arc(px, py, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = dotFill;
+          ctx.fill();
+          ctx.strokeStyle = dotStroke;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Tiny label
+          const label = obs.class_name || (Number.isFinite(Number(obs.class_id)) && Number(obs.class_id) >= 0 ? `class ${obs.class_id}` : 'object');
+          ctx.fillStyle = labelColor;
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(label, px, py + 7);
+        }
+      }
+
+      if (!pathsOnlyMode && cmdVelOverlay) {
+        drawOfflineCmdVelOverlay(ctx, cmdVelOverlay, scaleX, scaleY, width, height, minX, maxX);
+      }
+
+      // Draw pending pose marker (ghost robot)
+      if (!pathsOnlyMode && pendingPose) {
+        const px = scaleX(pendingPose.x);
+        const py = scaleY(pendingPose.y);
+        const pyaw = pendingPose.theta;
+
+        // Ghost footprint
+        ctx.beginPath();
+        ctx.arc(px, py, 10, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.2)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.8)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Ghost body
+        ctx.beginPath();
+        ctx.arc(px, py, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#f59e0b';
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Ghost heading arrow
+        const gArrowLen = 14;
+        const gArrowX = px + Math.cos(pyaw) * gArrowLen;
+        const gArrowY = py - Math.sin(pyaw) * gArrowLen;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(gArrowX, gArrowY);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Ghost arrow head
+        const gHeadLen = 5;
+        const gAngle = Math.atan2(py - gArrowY, gArrowX - px);
+        ctx.beginPath();
+        ctx.moveTo(gArrowX, gArrowY);
+        ctx.lineTo(gArrowX - gHeadLen * Math.cos(gAngle - Math.PI / 6), gArrowY + gHeadLen * Math.sin(gAngle - Math.PI / 6));
+        ctx.lineTo(gArrowX - gHeadLen * Math.cos(gAngle + Math.PI / 6), gArrowY + gHeadLen * Math.sin(gAngle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fillStyle = '#f59e0b';
+        ctx.fill();
+      }
+
+      // Draw planned navigation path from Nav2
+      if (!pathsOnlyMode && plannedPath && plannedPath.path && plannedPath.path.length > 1) {
+        const path = plannedPath.path;
+        const screenPoints = path.map(p => ({ x: scaleX(p.x), y: scaleY(p.y) }));
+
+        // Glow shadow
+        ctx.beginPath();
+        ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+        for (let i = 1; i < screenPoints.length; i++) {
+          ctx.lineTo(screenPoints[i].x, screenPoints[i].y);
+        }
+        ctx.strokeStyle = 'rgba(250, 204, 21, 0.35)';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        // Main bright yellow path
+        ctx.beginPath();
+        ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+        for (let i = 1; i < screenPoints.length; i++) {
+          ctx.lineTo(screenPoints[i].x, screenPoints[i].y);
+        }
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Waypoint dots
+        for (let i = 0; i < screenPoints.length; i++) {
+          ctx.beginPath();
+          ctx.arc(screenPoints[i].x, screenPoints[i].y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#facc15';
+          ctx.fill();
+        }
+
+        // Start marker (yellow dot)
+        ctx.beginPath();
+        ctx.arc(screenPoints[0].x, screenPoints[0].y, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#facc15';
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // End marker (yellow ring)
+        ctx.beginPath();
+        ctx.arc(screenPoints[screenPoints.length - 1].x, screenPoints[screenPoints.length - 1].y, 7, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // Draw pending navigation goal marker
+      if (!pathsOnlyMode && pendingNavGoal) {
+        const gx = scaleX(pendingNavGoal.x);
+        const gy = scaleY(pendingNavGoal.y);
+        const gyaw = pendingNavGoal.theta;
+
+        // Goal footprint
+        ctx.beginPath();
+        ctx.arc(gx, gy, 10, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Goal body
+        ctx.beginPath();
+        ctx.arc(gx, gy, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Goal heading arrow
+        const nArrowLen = 14;
+        const nArrowX = gx + Math.cos(gyaw) * nArrowLen;
+        const nArrowY = gy - Math.sin(gyaw) * nArrowLen;
+        ctx.beginPath();
+        ctx.moveTo(gx, gy);
+        ctx.lineTo(nArrowX, nArrowY);
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Goal arrow head
+        const nHeadLen = 5;
+        const nAngle = Math.atan2(gy - nArrowY, nArrowX - gx);
+        ctx.beginPath();
+        ctx.moveTo(nArrowX, nArrowY);
+        ctx.lineTo(nArrowX - nHeadLen * Math.cos(nAngle - Math.PI / 6), nArrowY + nHeadLen * Math.sin(nAngle - Math.PI / 6));
+        ctx.lineTo(nArrowX - nHeadLen * Math.cos(nAngle + Math.PI / 6), nArrowY + nHeadLen * Math.sin(nAngle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+      }
+
+      // Draw existing rooms
+      if (!pathsOnlyMode && showRooms && lastRooms.length > 0 && viewBounds) {
+        for (const room of lastRooms) {
+          const pts = [];
+          if (Number.isFinite(Number(room.x1)) && Number.isFinite(Number(room.y1))) pts.push({ x: scaleX(room.x1), y: scaleY(room.y1) });
+          if (Number.isFinite(Number(room.x2)) && Number.isFinite(Number(room.y2))) pts.push({ x: scaleX(room.x2), y: scaleY(room.y2) });
+          if (Number.isFinite(Number(room.x3)) && Number.isFinite(Number(room.y3))) pts.push({ x: scaleX(room.x3), y: scaleY(room.y3) });
+          if (Number.isFinite(Number(room.x4)) && Number.isFinite(Number(room.y4))) pts.push({ x: scaleX(room.x4), y: scaleY(room.y4) });
+          if (pts.length < 3) continue;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(139, 92, 246, 0.12)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(139, 92, 246, 0.7)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // Room label at centroid
+          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+          const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+          ctx.fillStyle = 'rgba(167, 139, 250, 0.9)';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(room.name || 'Room', cx, cy);
+
+        }
+      }
+
+      // Draw room being marked (preview)
+      if (!pathsOnlyMode && markRoomMode && roomPoints.length > 0 && viewBounds) {
+        const screenPts = roomPoints.map(p => ({ x: scaleX(p.x), y: scaleY(p.y) }));
+        // Draggable handle for each clicked point
+        for (let i = 0; i < screenPts.length; i++) {
+          const sp = screenPts[i];
+          // Outer ring (grab hint)
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 9, 0, 2 * Math.PI);
+          ctx.fillStyle = 'rgba(139, 92, 246, 0.15)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(139, 92, 246, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          // Inner dot
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#8b5cf6';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // Point number
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(i + 1), sp.x, sp.y);
+        }
+        // Polygon preview
+        if (screenPts.length >= 2) {
+          ctx.beginPath();
+          ctx.moveTo(screenPts[0].x, screenPts[0].y);
+          for (let i = 1; i < screenPts.length; i++) ctx.lineTo(screenPts[i].x, screenPts[i].y);
+          if (screenPts.length === 4) ctx.closePath();
+          ctx.strokeStyle = 'rgba(139, 92, 246, 0.9)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([4, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          if (screenPts.length >= 3) {
+            ctx.fillStyle = 'rgba(139, 92, 246, 0.15)';
+            ctx.fill();
+          }
+        }
+      }
+
+      updateInfoPanel(info, lastRobotPose);
+
+      // FPS counter
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 1000) {
+        document.getElementById('fpsIndicator').textContent = `${frameCount} fps`;
+        frameCount = 0;
+        lastFpsTime = now;
+      }
+    }
+
+    function updateInfoPanel(info, pose) {
+      if (info) {
+        document.getElementById('infoZoom').textContent = `${zoom.toFixed(2)}×`;
+        document.getElementById('infoResolution').textContent = `${info.resolution.toFixed(3)} m`;
+        document.getElementById('infoDimensions').textContent = `${info.width} × ${info.height}`;
+        document.getElementById('infoOrigin').textContent = `(${info.origin.position.x.toFixed(2)}, ${info.origin.position.y.toFixed(2)})`;
+      } else {
+        document.getElementById('infoZoom').textContent = '—';
+        document.getElementById('infoResolution').textContent = '—';
+        document.getElementById('infoDimensions').textContent = '—';
+        document.getElementById('infoOrigin').textContent = '—';
+      }
+      if (pose) {
+        document.getElementById('infoRobotX').textContent = pose.position.x.toFixed(3);
+        document.getElementById('infoRobotY').textContent = pose.position.y.toFixed(3);
+        document.getElementById('infoRobotYaw').textContent = (yawFromQuaternion(pose.orientation) * 180 / Math.PI).toFixed(1) + '°';
+      } else {
+        document.getElementById('infoRobotX').textContent = '—';
+        document.getElementById('infoRobotY').textContent = '—';
+        document.getElementById('infoRobotYaw').textContent = '—';
+      }
+
+      // Update data age indicator
+      const ageEl = document.getElementById('dataAge');
+      const offlineEl = document.getElementById('offlineBadge');
+      const now = Date.now();
+      const ageSec = Math.round((now - lastDataTimestamp) / 1000);
+      if (lastDataTimestamp > 0) {
+        if (ageSec < 10) {
+          ageEl.textContent = 'live';
+          ageEl.className = 'data-age';
+          offlineEl.style.display = 'none';
+        } else if (ageSec < 60) {
+          ageEl.textContent = `${ageSec}s ago`;
+          ageEl.className = 'data-age stale';
+          offlineEl.style.display = 'inline-block';
+        } else {
+          ageEl.textContent = `${Math.floor(ageSec / 60)}m ${ageSec % 60}s ago`;
+          ageEl.className = 'data-age stale';
+          offlineEl.style.display = 'inline-block';
+        }
+      } else {
+        ageEl.textContent = '—';
+        ageEl.className = 'data-age';
+        offlineEl.style.display = 'none';
+      }
+    }
+
+    async function sendCommand(action) {
+      try {
+        const res = await fetch('/api/slam/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        await loadStatus();
+      } catch (err) {
+        alert(`Command failed: ${err.message}`);
+      }
+    }
+
+    async function sendSave() {
+      const name = prompt('Enter map name:', 'map_01');
+      if (!name || !name.trim()) return;
+      const trimmed = name.trim();
+      try {
+        const res = await fetch('/api/slam/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'save', name: trimmed }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        await loadStatus();
+      } catch (err) {
+        alert(`Save failed: ${err.message}`);
+      }
+    }
+
+    async function sendLoad() {
+      const name = document.getElementById('loadSelect').value;
+      if (!name) { alert('Please select a saved map.'); return; }
+      try {
+        pendingLoadName = name;
+        const previousSignature = mapDataSignature(lastMapData);
+        const previousLoadedName = loadedMapName;
+        const res = await fetch(`/api/toolbox_map/load?name=${encodeURIComponent(name)}`, {
+          method: 'POST',
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        await waitForLoadedMap(name, previousSignature, previousLoadedName, Number(data.created_at || 0));
+        pendingLoadName = '';
+        zoom = 1.0;
+        panX = 0;
+        panY = 0;
+        await loadStatus();
+        drawMap();
+      } catch (err) {
+        pendingLoadName = '';
+        await loadStatus().catch(() => {});
+        alert(`Load failed: ${err.message}`);
+      }
+    }
+
+    async function sendDelete() {
+      const name = document.getElementById('loadSelect').value;
+      if (!name) { alert('Please select a saved map to delete.'); return; }
+      if (!confirm(`Delete map "${name}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/toolbox_map/delete?name=${encodeURIComponent(name)}`, {
+          method: 'POST',
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        await loadStatus();
+      } catch (err) {
+        alert(`Delete failed: ${err.message}`);
+      }
+    }
+
+    async function sendClearMapData() {
+      const name = loadedMapName || document.getElementById('loadSelect').value;
+      if (!name) { alert('No active map selected.'); return; }
+      if (!confirm(`Clear all objects and interactions for "${name}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/map/clear_data?name=${encodeURIComponent(name)}`, {
+          method: 'POST',
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        alert(data.message || 'Map data cleared.');
+        await loadStatus();
+        if (lastMapData) drawMap();
+      } catch (err) {
+        alert(`Clear map data failed: ${err.message}`);
+      }
+    }
+
+    async function toggleRecordData() {
+      const name = document.getElementById('loadSelect').value;
+      if (!name) { alert('Please select a saved map first.'); return; }
+      const btn = document.getElementById('btnRecordData');
+      btn.disabled = true;
+      try {
+        if (recordingDataEnabled) {
+          const res = await fetch('/api/toolbox_map/stop_recording', { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        } else {
+          const res = await fetch(`/api/toolbox_map/start_recording?name=${encodeURIComponent(name)}`, { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        }
+        await loadStatus();
+      } catch (err) {
+        alert(`Toggle recording failed: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function toggleShowDetections() {
+      showDetections = !showDetections;
+      const btn = document.getElementById('btnShowDetections');
+      const panel = document.getElementById('detectionLogPanel');
+      if (showDetections) {
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-danger');
+        panel.style.display = '';
+      } else {
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-outline-light');
+        panel.style.display = 'none';
+      }
+      if (lastMapData) drawMap();
+    }
+
+    function toggleShowRobotPath() {
+      showRobotPath = !showRobotPath;
+      const btn = document.getElementById('btnShowRobotPath');
+      if (showRobotPath) {
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-success');
+      } else {
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-outline-light');
+      }
+      if (lastMapData) drawMap();
+    }
+
+    function toggleShowRooms() {
+      showRooms = !showRooms;
+      if (lastMapData) drawMap();
+    }
+
+    function togglePathFadeMode() {
+      pathFadeMode = !pathFadeMode;
+      drawMap();
+    }
+
+    function togglePathsOnlyMode() {
+      pathsOnlyMode = !pathsOnlyMode;
+      drawMap();
+    }
+
+    function saveCanvasPng(transparent) {
+      if (transparent) {
+        transparentExport = true;
+        drawMap();
+      }
+      const canvas = document.getElementById('mapCanvas');
+      const link = document.createElement('a');
+      link.download = 'slam_paths_' + new Date().toISOString().slice(0,19).replace(/:/g,'-') + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      if (transparent) {
+        transparentExport = false;
+        drawMap();
+      }
+    }
+
+    async function loadRobotPath() {
+      try {
+        const url = '/api/slam/robot_path?since=' + lastRobotPathFetchT;
+        const data = await fetchJson(url).catch(() => null);
+        if (!data || !Array.isArray(data.points)) return;
+        if (data.points.length > 0) {
+          lastRobotPath = lastRobotPath.concat(data.points);
+          lastRobotPathFetchT = data.latest_t || lastRobotPathFetchT;
+        }
+        // Cap memory usage: keep last 50k points
+        if (lastRobotPath.length > 50000) {
+          lastRobotPath = lastRobotPath.slice(-50000);
+        }
+      } catch (err) {
+        // Silently ignore
+      }
+    }
+
+    async function refreshPathRecordingStatus() {
+      try {
+        const data = await fetchJson('/api/slam/robot_path/status').catch(() => null);
+        if (!data) return;
+        isRecordingPath = data.recording;
+        updatePathRecordButton();
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    function overlayPathColor(id) {
+      // Deterministic hue from path ID so colors stay stable across toggles
+      const hue = ((id * 137) % 360 + 360) % 360;
+      return `hsl(${hue}, 70%, 60%)`;
+    }
+
+    async function refreshOverlayPathsList() {
+      const container = document.getElementById('overlayPathsList');
+      if (!container) return;
+      try {
+        const data = await fetchJson('/api/slam/robot_path/saved').catch(() => null);
+        const paths = data?.paths || [];
+        if (paths.length === 0) {
+          container.innerHTML = '<div style="font-size:10px; color:var(--muted);">No saved paths.</div>';
+          return;
+        }
+        container.innerHTML = paths.map((p) => {
+          const checked = overlayPaths[p.id] ? 'checked' : '';
+          const color = overlayPaths[p.id]?.color || overlayPathColor(p.id);
+          return `<label style="display:flex; align-items:center; gap:4px; font-size:10px; color:var(--text); cursor:pointer; margin-bottom:2px;">
+            <input type="checkbox" ${checked} onchange="toggleOverlayPath(${p.id}, this.checked)" style="cursor:pointer;">
+            <span style="width:8px; height:8px; border-radius:50%; background:${color}; display:inline-block; flex-shrink:0;"></span>
+            ${escapeHtml(p.name)}
+          </label>`;
+        }).join('');
+      } catch (err) {
+        container.innerHTML = '<div style="font-size:10px; color:var(--muted);">Failed to load.</div>';
+      }
+    }
+
+    async function toggleOverlayPath(id, checked) {
+      if (!checked) {
+        delete overlayPaths[id];
+        drawMap();
+        return;
+      }
+      try {
+        const data = await fetchJson('/api/slam/robot_path/get?path_id=' + id);
+        if (!data || !Array.isArray(data.points)) {
+          console.error('Invalid path data for id=' + id, data);
+          return;
+        }
+        overlayPaths[id] = {
+          id: data.id,
+          name: data.name,
+          points: data.points,
+          color: overlayPathColor(data.id),
+        };
+        drawMap();
+      } catch (err) {
+        console.error('Failed to load overlay path id=' + id, err);
+      }
+    }
+
+    function updatePathRecordButton() {
+      const btn = document.getElementById('btnRecordPath');
+      const saveBtn = document.getElementById('btnSavePath');
+      if (isRecordingPath) {
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-danger');
+        btn.textContent = '⏹️ Stop';
+        saveBtn.style.display = 'none';
+      } else {
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-outline-light');
+        btn.textContent = '⏺️ Record';
+        saveBtn.style.display = '';
+      }
+    }
+
+    async function toggleRecordPath() {
+      if (isRecordingPath) {
+        await fetch('/api/slam/robot_path/stop_recording', { method: 'POST' });
+        isRecordingPath = false;
+      } else {
+        await fetch('/api/slam/robot_path/start_recording', { method: 'POST' });
+        isRecordingPath = true;
+        lastRobotPath = [];
+        lastRobotPathFetchT = 0;
+      }
+      updatePathRecordButton();
+    }
+
+    async function showSavePathDialog() {
+      const name = prompt('Save path as:', 'path_' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-'));
+      if (!name) return;
+      try {
+        const res = await fetch('/api/slam/robot_path/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, building_name: loadedMapName || null }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          alert('Saved "' + name + '" (' + data.point_count + ' points)');
+        } else {
+          alert('Save failed: ' + (data.detail || 'unknown error'));
+        }
+      } catch (err) {
+        alert('Save failed: ' + err);
+      }
+    }
+
+    async function showLoadPathDialog() {
+      try {
+        const data = await fetchJson('/api/slam/robot_path/saved').catch(() => null);
+        if (!data || !data.paths || data.paths.length === 0) {
+          alert('No saved paths found.');
+          return;
+        }
+        const options = data.paths.map((p, i) => `${i + 1}. ${p.name} (${p.point_count} pts, ${p.created_at ? p.created_at.slice(0, 16) : 'unknown'})`).join('\n');
+        const choice = prompt('Enter number to load:\n\n' + options);
+        if (!choice) return;
+        const idx = parseInt(choice, 10) - 1;
+        if (idx < 0 || idx >= data.paths.length) {
+          alert('Invalid selection.');
+          return;
+        }
+        const path = data.paths[idx];
+        const res = await fetch('/api/slam/robot_path/load', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: path.id }),
+        });
+        const result = await res.json();
+        if (result.ok) {
+          lastRobotPath = [];
+          lastRobotPathFetchT = 0;
+          await loadRobotPath();
+          if (lastMapData) drawMap();
+          alert('Loaded "' + result.name + '" (' + result.point_count + ' points)');
+        } else {
+          alert('Load failed: ' + (result.detail || 'unknown error'));
+        }
+      } catch (err) {
+        alert('Load failed: ' + err);
+      }
+    }
+
+    async function startNavigationMode() {
+      // Trigger navigate mode if not already active
+      if (!navigateMode) {
+        toggleNavigateMode();
+      }
+      document.getElementById('btnStartNav').style.display = 'none';
+      document.getElementById('btnStopNavMode').style.display = '';
+    }
+
+    async function stopNavigationMode() {
+      await stopNavPlan();
+      if (navigateMode) {
+        toggleNavigateMode();
+      }
+      document.getElementById('btnStartNav').style.display = '';
+      document.getElementById('btnStopNavMode').style.display = 'none';
+    }
+
+    async function clearDetections() {
+      try {
+        const res = await fetch('/api/slam/clear_detections', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        lastAllDetections = [];
+        lastDetections = [];
+        lastHistoricalObservations = [];
+        updateDetectionLog();
+        if (lastMapData) drawMap();
+      } catch (err) {
+        alert(`Clear detections failed: ${err.message}`);
+      }
+    }
+
+    function updateDetectionLog() {
+      const listEl = document.getElementById('detectionLogList');
+      const countEl = document.getElementById('detectionCount');
+      const classSelect = document.getElementById('detectionClassFilter');
+
+      // Refresh class filter options when not focused
+      if (classSelect && document.activeElement !== classSelect) {
+        const allClasses = new Set();
+        for (const d of lastAllDetections) {
+          const name = d.class_name || (Number.isFinite(Number(d.class_id)) && Number(d.class_id) >= 0 ? `class ${d.class_id}` : 'unknown');
+          allClasses.add(name);
+        }
+        for (const o of lastHistoricalObservations) {
+          const name = o.class_name || (Number.isFinite(Number(o.class_id)) && Number(o.class_id) >= 0 ? `class ${o.class_id}` : 'unknown');
+          allClasses.add(name);
+        }
+        const sorted = Array.from(allClasses).sort();
+        const currentOptions = Array.from(classSelect.options).map(o => o.value);
+        const desiredOptions = ['', ...sorted];
+        if (JSON.stringify(currentOptions) !== JSON.stringify(desiredOptions)) {
+          const prev = classSelect.value;
+          classSelect.innerHTML = desiredOptions.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v || 'All classes')}</option>`).join('');
+          classSelect.value = prev;
+          if (classSelect.value !== prev) {
+            detectionClassFilter = '';
+          }
+        }
+      }
+
+      const filtered = lastAllDetections.filter(d => passesDetectionFilters(d, false));
+      if (!filtered || filtered.length === 0) {
+        countEl.textContent = '0';
+        listEl.innerHTML = '<div class="text-muted" style="font-size:11px;">No detections</div>';
+        return;
+      }
+      countEl.textContent = String(filtered.length);
+      // Sort by class_name then track_id for stability
+      const sorted = [...filtered].sort((a, b) => {
+        const ca = String(a.class_name || a.class_id || 'unknown');
+        const cb = String(b.class_name || b.class_id || 'unknown');
+        if (ca !== cb) return ca.localeCompare(cb);
+        return (a.track_id ?? -1) - (b.track_id ?? -1);
+      });
+      const html = sorted.map(d => {
+        const cls = escapeHtml(d.class_name || (Number.isFinite(Number(d.class_id)) && Number(d.class_id) >= 0 ? `class ${d.class_id}` : 'unknown'));
+        const track = Number.isFinite(Number(d.track_id)) && Number(d.track_id) >= 0 ? `track ${d.track_id}` : `inst ${d.instance_id ?? '?'}`;
+        const source = detectionSourceValue(d);
+        const posOk = (source === 'dynosam' || source === 'depth') && Number.isFinite(Number(d.x)) && Number.isFinite(Number(d.y));
+        const coords = posOk
+          ? `(${Number(d.x).toFixed(2)}, ${Number(d.y).toFixed(2)})`
+          : 'no position';
+        const coordClass = posOk ? 'det-coords' : 'det-meta';
+        const badgeColor = source === 'dynosam' ? '#22c55e' : (source === 'depth' ? '#38bdf8' : '#64748b');
+        const sourceBadge = `<span style="color:${badgeColor};font-size:10px;">● ${escapeHtml(detectionSourceLabel(d))}</span>`;
+        return `
+          <div class="detection-log-item">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="det-class">${cls}</span>
+              ${sourceBadge}
+            </div>
+            <div class="det-meta">${track} | conf ${Number(d.score || 0).toFixed(2)}</div>
+            <div class="${coordClass}">${coords}</div>
+          </div>
+        `;
+      }).join('');
+      listEl.innerHTML = html;
+    }
+
+    function onDetectionClassFilterChange() {
+      const sel = document.getElementById('detectionClassFilter');
+      detectionClassFilter = sel ? sel.value : '';
+      updateDetectionLog();
+      closeObsPopup();
+      if (lastMapData) drawMap();
+    }
+
+    function onDetectionSourceFilterChange() {
+      const sel = document.getElementById('detectionSourceFilter');
+      detectionSourceFilter = sel ? sel.value : '';
+      updateDetectionLog();
+      closeObsPopup();
+      if (lastMapData) drawMap();
+    }
+
+    function onDetectionTimeFilterChange() {
+      const chk = document.getElementById('detectionTimeFilter');
+      detectionTimeFilter10Min = chk ? chk.checked : false;
+      updateDetectionLog();
+      closeObsPopup();
+      if (lastMapData) drawMap();
+    }
+
+    function onDetectionPositionFilterChange() {
+      const chk = document.getElementById('detectionPositionFilter');
+      detectionPositionFilter = chk ? chk.checked : false;
+      updateDetectionLog();
+      closeObsPopup();
+      if (lastMapData) drawMap();
+    }
+
+    function toggleSetPoseMode() {
+      setPoseMode = !setPoseMode;
+      const btn = document.getElementById('btnSetPose');
+      if (setPoseMode) {
+        // Mutually exclusive with navigate mode and room mode
+        if (navigateMode) toggleNavigateMode();
+        if (markRoomMode) cancelMarkRoom();
+        btn.classList.remove('btn-outline-light');
+        btn.classList.add('btn-warning');
+        document.getElementById('mapCanvas').style.cursor = 'crosshair';
+      } else {
+        btn.classList.remove('btn-warning');
+        btn.classList.add('btn-outline-light');
+        document.getElementById('mapCanvas').style.cursor = 'grab';
+        pendingPose = null;
+        document.getElementById('poseEditor').style.display = 'none';
+        drawMap();
+      }
+    }
+
+    function screenToMap(sx, sy) {
+      if (!viewBounds) return null;
+      const { minX, maxX, minY, maxY, width, height } = viewBounds;
+      const x = minX + (sx / width) * (maxX - minX);
+      const y = minY + ((height - sy) / height) * (maxY - minY);
+      return { x, y };
+    }
+
+    function cancelSetPose() {
+      pendingPose = null;
+      document.getElementById('poseEditor').style.display = 'none';
+      drawMap();
+    }
+
+    function applySetPose() {
+      if (!pendingPose) return;
+      const yawDeg = parseFloat(document.getElementById('poseYaw').value) || 0;
+      pendingPose.theta = yawDeg * Math.PI / 180;
+      const pose = { x: pendingPose.x, y: pendingPose.y, theta: pendingPose.theta };
+      sendSetPose(pose.x, pose.y, pose.theta);
+      cancelSetPose();
+    }
+
+    function robotPoseFromSetPose(x, y, theta) {
+      return {
+        position: { x, y, z: 0.0 },
+        orientation: {
+          x: 0.0,
+          y: 0.0,
+          z: Math.sin(theta / 2),
+          w: Math.cos(theta / 2),
+        },
+      };
+    }
+
+    function poseCloseEnough(pose, x, y, theta, posTolerance = 0.35, yawTolerance = 25 * Math.PI / 180) {
+      if (!pose?.position || !pose?.orientation) return false;
+      const dx = Number(pose.position.x) - Number(x);
+      const dy = Number(pose.position.y) - Number(y);
+      const yaw = yawFromQuaternion(pose.orientation);
+      const yawDelta = Math.atan2(Math.sin(yaw - theta), Math.cos(yaw - theta));
+      return Math.hypot(dx, dy) <= posTolerance && Math.abs(yawDelta) <= yawTolerance;
+    }
+
+    async function waitForSetPoseConfirmation(x, y, theta, timeoutMs = 14000) {
+      const deadline = Date.now() + timeoutMs;
+      const fetchPoseAndStatus = () => Promise.all([
+        fetchJson('/api/slam/robot_pose?_=' + Date.now()).catch(() => null),
+        fetchJson('/api/slam/status?_=' + Date.now()).catch(() => null),
+      ]);
+      while (Date.now() < deadline) {
+        const [pose, status] = await fetchPoseAndStatus();
+        if (poseCloseEnough(pose, x, y, theta)) {
+          lastRobotPose = pose;
+          lastDataTimestamp = Date.now();
+          slamStatus = status || slamStatus;
+          return { state: 'confirmed' };
+        }
+        if (status?.localization_pending) {
+          slamStatus = status;
+          return {
+            state: 'pending',
+            message: String(status.message || 'Set pose applied; waiting for localization to converge.'),
+          };
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      const [pose, status] = await fetchPoseAndStatus();
+      if (poseCloseEnough(pose, x, y, theta)) {
+        lastRobotPose = pose;
+        lastDataTimestamp = Date.now();
+        slamStatus = status || slamStatus;
+        return { state: 'confirmed' };
+      }
+      if (status?.localization_pending) {
+        slamStatus = status;
+        return {
+          state: 'pending',
+          message: String(status.message || 'Set pose applied; waiting for localization to converge.'),
+        };
+      }
+
+      return {
+        state: 'timeout',
+        message: `Localization did not confirm the new pose at (${x.toFixed(2)}, ${y.toFixed(2)}, ${(theta * 180 / Math.PI).toFixed(1)}°).`,
+      };
+    }
+
+    function shiftLocalCostmapForSetPose(x, y) {
+      if (!lastLocalCostmapData?.info?.origin?.position || !lastRobotPose?.position) return;
+      const dx = x - lastRobotPose.position.x;
+      const dy = y - lastRobotPose.position.y;
+      lastLocalCostmapData = typeof structuredClone === 'function'
+        ? structuredClone(lastLocalCostmapData)
+        : JSON.parse(JSON.stringify(lastLocalCostmapData));
+      lastLocalCostmapData.info.origin.position.x += dx;
+      lastLocalCostmapData.info.origin.position.y += dy;
+    }
+
+    async function sendSetPose(x, y, theta) {
+      try {
+        const res = await fetch('/api/slam/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set_pose', x, y, theta }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const confirmation = await waitForSetPoseConfirmation(x, y, theta);
+        await loadMapData();
+        if (confirmation.state === 'timeout') {
+          throw new Error(confirmation.message);
+        }
+        if (followRobot) {
+          panX = 0;
+          panY = 0;
+        }
+        drawMap();
+        if (confirmation.state === 'pending') {
+          alert(confirmation.message);
+          return;
+        }
+        alert(`Pose confirmed at (${x.toFixed(2)}, ${y.toFixed(2)}, ${(theta * 180 / Math.PI).toFixed(1)}°)`);
+      } catch (err) {
+        alert(`Set pose failed: ${err.message}`);
+      }
+    }
+
+    async function sendMarkStart() {
+      const name = loadedMapName || document.getElementById('loadSelect').value;
+      if (!name) { alert('No map selected. Load a map first.'); return; }
+      try {
+        const res = await fetch('/api/slam/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'mark_start', name }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        alert(`Start position for "${name}" saved.`);
+      } catch (err) {
+        alert(`Mark start failed: ${err.message}`);
+      }
+    }
+
+    function toggleNavigateMode() {
+      if (navigateMode) {
+        navigateMode = false;
+        document.getElementById('btnNavigate').classList.remove('btn-success');
+        document.getElementById('btnNavigate').classList.add('btn-outline-light');
+        document.getElementById('mapCanvas').style.cursor = 'grab';
+        cancelNavigate();
+        return;
+      }
+      // Disable set-pose mode and room mode if active
+      if (setPoseMode) toggleSetPoseMode();
+      if (markRoomMode) cancelMarkRoom();
+      navigateMode = true;
+      document.getElementById('btnNavigate').classList.remove('btn-outline-light');
+      document.getElementById('btnNavigate').classList.add('btn-success');
+      document.getElementById('mapCanvas').style.cursor = 'crosshair';
+      plannedPath = null;
+      pendingNavGoal = null;
+      document.getElementById('navEditor').style.display = 'none';
+      drawMap();
+    }
+
+    function cancelNavigate() {
+      isSettingNavigateGoal = false;
+      pendingNavGoal = null;
+      plannedPath = null;
+      isRefreshingExecutingPath = false;
+      agentNavMode = false;
+      document.getElementById('navEditor').style.display = 'none';
+      document.getElementById('btnPlanPath').style.display = 'block';
+      document.getElementById('btnPlanPath').disabled = false;
+      document.getElementById('btnExecuteNav').style.display = 'none';
+      document.getElementById('btnExecuteNav').disabled = false;
+      document.getElementById('btnStopNav').style.display = 'none';
+      document.getElementById('btnStopNav').disabled = false;
+      document.getElementById('btnAgentAccept').style.display = 'none';
+      document.getElementById('btnAgentReject').style.display = 'none';
+      document.getElementById('navPlanInfo').textContent = 'Click Plan to compute path';
+      drawMap();
+    }
+
+    // ---------- Room marking ----------
+    function toggleMarkRoomMode() {
+      if (markRoomMode) {
+        cancelMarkRoom();
+        return;
+      }
+      // Disable other modes
+      if (setPoseMode) toggleSetPoseMode();
+      if (navigateMode) toggleNavigateMode();
+      markRoomMode = true;
+      roomPoints = [];
+      draggingRoomPointIndex = -1;
+      document.getElementById('mapCanvas').style.cursor = 'crosshair';
+      document.getElementById('roomEditor').style.display = 'block';
+      updateRoomEditor();
+      drawMap();
+    }
+
+    function updateRoomEditor() {
+      const statusEl = document.getElementById('roomPointStatus');
+      const saveBtn = document.getElementById('btnSaveRoom');
+      if (roomPoints.length === 0) {
+        statusEl.textContent = 'Click 4 points on the map';
+        saveBtn.disabled = true;
+      } else if (roomPoints.length < 4) {
+        statusEl.textContent = `Point ${roomPoints.length} of 4 set — drag existing points to adjust`;
+        saveBtn.disabled = true;
+      } else {
+        statusEl.textContent = 'All 4 points set — drag to adjust, then enter name and save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    function cancelMarkRoom() {
+      markRoomMode = false;
+      roomPoints = [];
+      draggingRoomPointIndex = -1;
+      document.getElementById('mapCanvas').style.cursor = 'grab';
+      document.getElementById('roomEditor').style.display = 'none';
+      document.getElementById('roomNameInput').value = '';
+      updateRoomEditor();
+      drawMap();
+    }
+
+    async function saveRoom() {
+      const name = document.getElementById('roomNameInput').value.trim();
+      if (!name) { alert('Please enter a room name.'); return; }
+      if (roomPoints.length !== 4) { alert('Please click all 4 points first.'); return; }
+      const mapName = loadedMapName || document.getElementById('loadSelect').value;
+      if (!mapName) { alert('No map selected. Load a map first.'); return; }
+      try {
+        const res = await fetch('/api/rooms/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            map_name: mapName,
+            name: name,
+            x1: roomPoints[0].x, y1: roomPoints[0].y,
+            x2: roomPoints[1].x, y2: roomPoints[1].y,
+            x3: roomPoints[2].x, y3: roomPoints[2].y,
+            x4: roomPoints[3].x, y4: roomPoints[3].y,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        alert(`Room "${name}" saved.`);
+        cancelMarkRoom();
+        await fetchRooms();
+        drawMap();
+      } catch (err) {
+        alert(`Save room failed: ${err.message}`);
+      }
+    }
+
+    function populateDisabledRoomsCheckboxes() {
+      const container = document.getElementById('exploreDisabledRoomsList');
+      if (!container) return;
+      // Preserve currently checked values
+      const checked = new Set();
+      container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        if (cb.checked) checked.add(cb.value);
+      });
+      container.innerHTML = '';
+      if (!lastRooms.length) {
+        container.innerHTML = '<span class="text-muted" style="font-size:10px;">Load a map to see rooms</span>';
+        return;
+      }
+      for (const room of lastRooms) {
+        const name = room.name || room;
+        if (!name) continue;
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex; align-items:center; gap:3px; font-size:10px; color:var(--text); background:rgba(15,23,42,0.6); border:1px solid var(--panel-border); border-radius:4px; padding:2px 6px; cursor:pointer; user-select:none;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = name;
+        cb.checked = checked.has(name);
+        cb.style.accentColor = 'var(--accent)';
+        label.appendChild(cb);
+        const span = document.createElement('span');
+        span.textContent = name;
+        label.appendChild(span);
+        container.appendChild(label);
+      }
+    }
+
+    async function fetchRooms() {
+      const mapName = loadedMapName || document.getElementById('loadSelect').value;
+      if (!mapName) { lastRooms = []; populateDisabledRoomsCheckboxes(); return; }
+      try {
+        const res = await fetch(`/api/rooms?map_name=${encodeURIComponent(mapName)}`);
+        const data = await res.json();
+        lastRooms = Array.isArray(data) ? data : (Array.isArray(data.rooms) ? data.rooms : []);
+      } catch (err) {
+        lastRooms = [];
+      }
+      populateDisabledRoomsCheckboxes();
+    }
+
+    async function planNavPath() {
+      if (!pendingNavGoal) {
+        document.getElementById('navPlanInfo').textContent = 'Click on the map first to set a goal';
+        return;
+      }
+      const yawDeg = parseFloat(document.getElementById('navGoalYaw').value) || 0;
+      pendingNavGoal.theta = yawDeg * Math.PI / 180;
+      const startPose = lastRobotPose
+        ? {
+            x: Number(lastRobotPose.position?.x ?? 0),
+            y: Number(lastRobotPose.position?.y ?? 0),
+            z: Number(lastRobotPose.position?.z ?? 0),
+            yaw: yawFromQuaternion(lastRobotPose.orientation || { x: 0, y: 0, z: 0, w: 1 }),
+          }
+        : null;
+      document.getElementById('navPlanInfo').textContent = 'Nav2 planner is computing…';
+      document.getElementById('btnPlanPath').disabled = true;
+      try {
+        const res = await fetch('/api/map/plan_custom_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            start: startPose,
+            goal: { x: pendingNavGoal.x, y: pendingNavGoal.y },
+          }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        plannedPath = data.plan || null;
+        if (plannedPath && startPose && !plannedPath.start) {
+          plannedPath.start = startPose;
+        }
+        if (plannedPath && plannedPath.path && plannedPath.path.length > 1) {
+          document.getElementById('navPlanInfo').textContent =
+            `Nav2 path: ${plannedPath.path_length_m?.toFixed(2) || '?'} m · ${plannedPath.num_waypoints || plannedPath.path.length} waypoints`;
+          document.getElementById('btnPlanPath').style.display = 'none';
+          if (agentNavMode) {
+            document.getElementById('btnAgentAccept').style.display = 'block';
+            document.getElementById('btnAgentReject').style.display = 'block';
+          } else {
+            document.getElementById('btnExecuteNav').style.display = 'block';
+          }
+        } else {
+          document.getElementById('navPlanInfo').textContent = 'Nav2 could not find a path';
+        }
+        drawMap();
+      } catch (err) {
+        document.getElementById('navPlanInfo').textContent = `Planning failed: ${err.message}`;
+      } finally {
+        document.getElementById('btnPlanPath').disabled = false;
+      }
+    }
+
+    async function executeNavPlan() {
+      if (!plannedPath) return;
+      document.getElementById('btnExecuteNav').disabled = true;
+      document.getElementById('btnAgentAccept').style.display = 'none';
+      document.getElementById('btnAgentReject').style.display = 'none';
+      document.getElementById('navPlanInfo').textContent = 'Sending goal…';
+      try {
+        const robotConnected = Boolean(slamStatus?.robot_connection?.connected);
+        const useDebugCmdVelFallback = !robotConnected;
+        const goalWithYaw = plannedPath.goal
+          ? { ...plannedPath.goal, yaw: pendingNavGoal ? pendingNavGoal.theta : 0 }
+          : { x: pendingNavGoal.x, y: pendingNavGoal.y, yaw: pendingNavGoal ? pendingNavGoal.theta : 0 };
+        const payload = {
+          plan: {
+            path: plannedPath.path,
+            path_length_m: plannedPath.path_length_m,
+            num_waypoints: plannedPath.num_waypoints,
+            start: plannedPath.start,
+            goal: goalWithYaw,
+            planner: plannedPath.planner,
+          },
+          observation: null,
+          debug_publish_cmd_vel_on_failure: useDebugCmdVelFallback,
+        };
+        const res = await fetch('/api/navigation/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        navStatus = data;
+        updateCmdVelDisplays(data.cmd_vel);
+        document.getElementById('navPlanInfo').textContent = useDebugCmdVelFallback
+          ? 'Goal sent — using direct cmd_vel fallback because robot connection is offline.'
+          : 'Goal sent — navigating…';
+        document.getElementById('btnExecuteNav').style.display = 'none';
+        document.getElementById('btnStopNav').style.display = 'block';
+        startNavStatusPolling();
+      } catch (err) {
+        document.getElementById('navPlanInfo').textContent = `Execution failed: ${err.message}`;
+        document.getElementById('btnExecuteNav').disabled = false;
+      }
+    }
+
+    async function stopNavPlan() {
+      pendingObjectTarget = null;  // user cancelled — abandon object search
+      document.getElementById('btnStopNav').disabled = true;
+      document.getElementById('navPlanInfo').textContent = 'Sending stop request…';
+      try {
+        const res = await fetch('/api/navigation/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        navStatus = data;
+        lastNavStatusTime = Date.now();
+        document.getElementById('navPlanInfo').textContent = 'Stop requested — waiting for Nav2…';
+      } catch (err) {
+        document.getElementById('navPlanInfo').textContent = `Stop failed: ${err.message}`;
+        document.getElementById('btnStopNav').disabled = false;
+      }
+    }
+
+    function goalFromNavigationStatus(status) {
+      const goal = status?.plan?.goal;
+      const worldGoal = goal?.planned_world || goal?.requested_world || goal;
+      const x = Number(worldGoal?.x);
+      const y = Number(worldGoal?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+      }
+      return { x, y };
+    }
+
+    function startPoseFromRobotPose(pose) {
+      if (!pose?.position) {
+        return null;
+      }
+      return {
+        x: Number(pose.position.x ?? 0),
+        y: Number(pose.position.y ?? 0),
+        z: Number(pose.position.z ?? 0),
+        yaw: yawFromQuaternion(pose.orientation || { x: 0, y: 0, z: 0, w: 1 }),
+      };
+    }
+
+    async function refreshExecutingPathOverlay(status) {
+      if (isRefreshingExecutingPath || String(status?.state || '') !== 'running') {
+        return;
+      }
+      const goal = goalFromNavigationStatus(status);
+      if (!goal) {
+        return;
+      }
+      isRefreshingExecutingPath = true;
+      try {
+        const pose = await fetchJson('/api/slam/robot_pose?_=' + Date.now()).catch(() => null);
+        const start = startPoseFromRobotPose(pose);
+        const res = await fetch('/api/map/plan_custom_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start, goal }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.plan?.path || data.plan.path.length < 2) {
+          return;
+        }
+        plannedPath = data.plan;
+        if (start && !plannedPath.start) {
+          plannedPath.start = start;
+        }
+        if (!pendingNavGoal) {
+          pendingNavGoal = {
+            x: goal.x,
+            y: goal.y,
+            theta: Number(status?.plan?.goal?.yaw ?? 0),
+          };
+        }
+        if (lastMapData) {
+          drawMap();
+        }
+      } catch (e) {
+        // Keep the last visible route if a refresh fails.
+      } finally {
+        isRefreshingExecutingPath = false;
+      }
+    }
+
+    function startNavStatusPolling() {
+      stopNavStatusPolling();
+      navStatusInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/navigation/status?_=' + Date.now(), { cache: 'no-store' });
+          if (!res.ok) return;
+          const data = await res.json();
+          navStatus = data;
+          lastNavStatusTime = Date.now();
+          updateCmdVelDisplays(data.cmd_vel);
+          refreshExecutingPathOverlay(data);
+          if (lastMapData) {
+            drawMap();
+          }
+          const state = String(data.state || 'unknown');
+          const msg = data.message || state;
+          document.getElementById('navPlanInfo').textContent = `Nav: ${msg}`;
+          if (state === 'running') {
+            document.getElementById('btnExecuteNav').style.display = 'none';
+            document.getElementById('btnStopNav').style.display = 'block';
+            document.getElementById('btnStopNav').disabled = false;
+            document.getElementById('btnAgentAccept').style.display = 'none';
+            document.getElementById('btnAgentReject').style.display = 'none';
+          }
+          if (['completed', 'failed', 'cancelled', 'error', 'idle'].includes(state)) {
+            stopNavStatusPolling();
+            document.getElementById('btnExecuteNav').disabled = false;
+            document.getElementById('btnStopNav').style.display = 'none';
+            if (state === 'completed') {
+              setTimeout(() => cancelNavigate(), 2000);
+              handleObjectArrivalVerification();
+            } else if (state !== 'idle') {
+              pendingObjectTarget = null;  // nav did not complete — abandon search
+            }
+          }
+        } catch (e) {
+          // ignore polling errors
+        }
+      }, 1500);
+    }
+
+    function stopNavStatusPolling() {
+      if (navStatusInterval) { clearInterval(navStatusInterval); navStatusInterval = null; }
+    }
+
+
+    // ── Agent chat panel ─────────────────────────────────────────────────────────
+
+    let agentBubbleCounter = 0;
+    const agentChatHistory = [];
+    let agentVlmSelectionState = { active_option: null, options: [] };
+    // Object-search state for "Go to <object>": after arrival, verify the
+    // object is visible; if not, auto-navigate to its next known location.
+    let pendingObjectTarget = null;
+
+    function toggleExtraSettings() {
+      document.getElementById('extraSettingsDropdown').classList.toggle('open');
+    }
+    window.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('extraSettingsDropdown');
+      if (dropdown && !dropdown.contains(e.target)) {
+        dropdown.classList.remove('open');
+      }
+    });
+
+    function toggleAgentPanel() {
+      const panel = document.getElementById('agentPanel');
+      const btn = document.getElementById('btnAgent');
+      const isOpen = panel.style.display !== 'none';
+      if (isOpen) {
+        panel.style.display = 'none';
+        if (btn) { btn.classList.remove('btn-primary'); btn.classList.add('btn-outline-light'); }
+      } else {
+        panel.style.display = 'flex';
+        if (btn) { btn.classList.remove('btn-outline-light'); btn.classList.add('btn-primary'); }
+        loadAgentVlmSelection();
+      }
+    }
+
+    function vlmSourceLabel(source) {
+      switch (source) {
+        case 'gemini': return 'via the Gemini API.';
+        case 'kimi': return 'via the Kimi API.';
+        case 'local': return 'via the local VLM server.';
+        default: return 'via the configured VLM backend.';
+      }
+    }
+
+    function renderAgentVlmSelection(state) {
+      agentVlmSelectionState = state || { active_option: null, options: [] };
+      const select = document.getElementById('agentVlmSelect');
+      const help = document.getElementById('agentVlmHelp');
+      if (!select) return;
+      select.innerHTML = '';
+      const options = Array.isArray(agentVlmSelectionState.options) ? agentVlmSelectionState.options : [];
+      options.forEach(option => {
+        const el = document.createElement('option');
+        el.value = option.id;
+        el.disabled = !option.enabled;
+        el.selected = Boolean(option.active);
+        el.textContent = option.enabled
+          ? `${option.label} - ${option.model}`
+          : `${option.label} - ${option.model} (${option.reason || 'unavailable'})`;
+        if (option.reason) el.title = option.reason;
+        select.appendChild(el);
+      });
+      const activeOption = agentVlmSelectionState.active_option || options.find(o => o.active) || null;
+      if (activeOption) {
+        select.value = activeOption.id;
+      }
+      if (help) {
+        help.textContent = activeOption
+          ? `Active: ${activeOption.label} using ${activeOption.model}.`
+          : 'No VLM options are currently available.';
+      }
+    }
+
+    async function loadAgentVlmSelection() {
+      try {
+        const res = await fetch('/api/vlm/options');
+        if (res.ok) renderAgentVlmSelection(await res.json());
+      } catch (e) { /* keep fallback text */ }
+    }
+
+    async function changeAgentVlmSelection() {
+      const select = document.getElementById('agentVlmSelect');
+      const help = document.getElementById('agentVlmHelp');
+      if (!select) return;
+      const previousValue = agentVlmSelectionState.active_option?.id || '';
+      select.disabled = true;
+      if (help) help.textContent = 'Switching model…';
+      try {
+        const res = await fetch('/api/vlm/selection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ option_id: select.value }),
+        });
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload.detail || 'Failed to switch the VLM backend.');
+        renderAgentVlmSelection(payload);
+      } catch (err) {
+        select.value = previousValue;
+        if (help) help.textContent = err.message || 'Failed to switch the VLM backend.';
+      } finally {
+        select.disabled = false;
+      }
+    }
+
+    function appendAgentBubble(role, html, isRaw) {
+      const id = 'agent-bubble-' + (++agentBubbleCounter);
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'agent-bubble agent-bubble-' + role;
+      div.innerHTML = isRaw ? html : escapeHtml(html).replace(/\n/g, '<br>');
+      document.getElementById('agentMessages').appendChild(div);
+      div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      return id;
+    }
+
+    function extractAgentNavTarget(toolLog) {
+      if (!Array.isArray(toolLog)) return null;
+      for (let i = toolLog.length - 1; i >= 0; i--) {
+        const entry = toolLog[i];
+        if (entry?.tool === 'move_to_position' && entry?.result) {
+          const r = entry.result;
+          const x = Number(r.x);
+          const y = Number(r.y);
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            return {
+              x,
+              y,
+              yaw: r.yaw !== undefined ? Number(r.yaw) : null,
+              reason: r.reason || 'Agent suggested target',
+              standoff_m: Number(r.standoff_m) || 0,
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    async function agentPlanPath(x, y, reason, standoffM, yaw) {
+      pendingNavGoal = { x, y, theta: yaw !== null ? yaw : 0 };
+      document.getElementById('navGoalX').textContent = x.toFixed(3);
+      document.getElementById('navGoalY').textContent = y.toFixed(3);
+      document.getElementById('navGoalYaw').value = 0;
+      document.getElementById('navEditor').style.display = 'block';
+      agentNavMode = true;
+      plannedPath = null;
+      document.getElementById('btnPlanPath').style.display = 'block';
+      document.getElementById('btnExecuteNav').style.display = 'none';
+      document.getElementById('btnAgentAccept').style.display = 'none';
+      document.getElementById('btnAgentReject').style.display = 'none';
+      document.getElementById('navPlanInfo').textContent = 'Agent target: planning…';
+      document.getElementById('btnPlanPath').disabled = true;
+
+      const startPose = lastRobotPose
+        ? {
+            x: Number(lastRobotPose.position?.x ?? 0),
+            y: Number(lastRobotPose.position?.y ?? 0),
+            z: Number(lastRobotPose.position?.z ?? 0),
+            yaw: yawFromQuaternion(lastRobotPose.orientation || { x: 0, y: 0, z: 0, w: 1 }),
+          }
+        : null;
+
+      try {
+        const res = await fetch('/api/map/plan_custom_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: startPose, goal: { x, y }, standoff_m: standoffM || 0 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        plannedPath = data.plan || null;
+        if (plannedPath && startPose && !plannedPath.start) {
+          plannedPath.start = startPose;
+        }
+        if (plannedPath && plannedPath.path && plannedPath.path.length > 1) {
+          document.getElementById('navPlanInfo').textContent =
+            `Agent path: ${plannedPath.path_length_m?.toFixed(2) || '?'} m · ${plannedPath.num_waypoints || plannedPath.path.length} waypoints`;
+          document.getElementById('btnPlanPath').style.display = 'none';
+          document.getElementById('btnAgentAccept').style.display = 'block';
+          document.getElementById('btnAgentReject').style.display = 'block';
+          drawMap();
+          return true;
+        } else {
+          document.getElementById('navPlanInfo').textContent = 'Agent target: Nav2 could not find a path';
+          document.getElementById('btnPlanPath').disabled = false;
+          return false;
+        }
+      } catch (err) {
+        document.getElementById('navPlanInfo').textContent = `Agent planning failed: ${err.message}`;
+        document.getElementById('btnPlanPath').disabled = false;
+        return false;
+      }
+    }
+
+    function agentAcceptPath() {
+      agentNavMode = false;
+      executeNavPlan();
+    }
+
+    function agentRejectPath() {
+      agentNavMode = false;
+      cancelNavigate();
+    }
+
+    async function renderAgentBubbleSlam(id, answer, toolLog, usage = {}) {
+      const div = document.getElementById(id);
+      if (!div) return;
+      let html = escapeHtml(answer).replace(/\n/g, '<br>');
+
+      const navTarget = extractAgentNavTarget(toolLog);
+      if (navTarget) {
+        html += `<div class="mt-2" style="font-size:11px;color:#fbbf24;">📍 Target: (${navTarget.x.toFixed(2)}, ${navTarget.y.toFixed(2)})</div>`;
+      }
+
+      const promptTokens = Number(usage.prompt_tokens || 0);
+      const completionTokens = Number(usage.completion_tokens || 0);
+      const totalTokens = Number(usage.total_tokens || (promptTokens + completionTokens));
+      if (totalTokens > 0) {
+        html += `<div class="text-muted" style="font-size:10px;margin-top:6px;">Tokens: ${promptTokens} in / ${completionTokens} out</div>`;
+      }
+
+      if (toolLog && toolLog.length > 0) {
+        html += `<details class="tool-log mt-1">
+          <summary style="cursor:pointer;font-size:10px;">${toolLog.length} tool call(s)</summary>
+          <pre>${escapeHtml(JSON.stringify(toolLog, null, 2))}</pre>
+        </details>`;
+      }
+
+      div.innerHTML = html;
+
+      if (navTarget) {
+        await agentPlanPath(navTarget.x, navTarget.y, navTarget.reason, navTarget.standoff_m, navTarget.yaw);
+      }
+    }
+
+    async function sendAgentQuestion() {
+      const input = document.getElementById('agentInput');
+      const question = input.value.trim();
+      if (!question) return;
+
+      pendingObjectTarget = null;  // new command supersedes any object search
+      input.value = '';
+      document.getElementById('agentSendBtn').disabled = true;
+      agentChatHistory.push({ role: 'user', content: question });
+
+      appendAgentBubble('user', question, false);
+      const thinkingId = appendAgentBubble('agent',
+        '<span class="agent-spinner"></span>Thinking…', true);
+
+      try {
+        const isSearchMode = agentMode === 'search';
+        const resp = await fetch(isSearchMode ? '/api/object_search' : '/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            history: isSearchMode ? null : agentChatHistory.slice(0, -1),
+            building: window.getSelectedBuilding ? (window.getSelectedBuilding() || null) : null,
+            allow_robot_location: true,
+          }),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          let errMsg = text;
+          try { const d = JSON.parse(text); if (d.detail) errMsg = d.detail; } catch (e) {}
+          throw new Error(errMsg || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        if (data.object_target && data.object_target.object_id) {
+          pendingObjectTarget = {
+            object_id: data.object_target.object_id,
+            object_name: data.object_target.object_name || 'the object',
+            visited: [],
+            since_ts: Date.now() / 1000,
+            legs: 0,
+          };
+        }
+        await renderAgentBubbleSlam(thinkingId, data.answer, data.tool_log, data.usage || {});
+        if (!isSearchMode) {
+          agentChatHistory.push({
+            role: 'assistant',
+            content: data.answer,
+            tool_log: data.tool_log || [],
+            usage: data.usage || {},
+          });
+        }
+      } catch (err) {
+        const div = document.getElementById(thinkingId);
+        if (div) div.innerHTML = 'Error: ' + escapeHtml(err.message);
+        agentChatHistory.pop();
+      } finally {
+        document.getElementById('agentSendBtn').disabled = false;
+        input.focus();
+      }
+    }
+    // ── Exploration mode ───────────────────────────────────────────────────────
+
+    let agentMode = 'chat';
+    let explorationActive = false;
+    let explorationPaused = false;
+    let explorationInterval = null;
+    let explorationStepCount = 0;
+
+    function setAgentMode(mode) {
+      agentMode = mode;
+      const btnChat = document.getElementById('btnModeChat');
+      const btnSearch = document.getElementById('btnModeSearch');
+      const btnExplore = document.getElementById('btnModeExplore');
+      const chatInput = document.getElementById('chatInputRow');
+      const exploreControls = document.getElementById('explorationControls');
+      const input = document.getElementById('agentInput');
+      [btnChat, btnSearch, btnExplore].forEach((b) => {
+        b.classList.remove('btn-primary');
+        b.classList.add('btn-outline-secondary');
+      });
+      if (mode === 'explore') {
+        btnExplore.classList.remove('btn-outline-secondary');
+        btnExplore.classList.add('btn-primary');
+        chatInput.style.display = 'none';
+        exploreControls.style.display = 'block';
+      } else if (mode === 'search') {
+        btnSearch.classList.remove('btn-outline-secondary');
+        btnSearch.classList.add('btn-primary');
+        chatInput.style.display = 'flex';
+        exploreControls.style.display = 'none';
+        input.placeholder = 'Object to find (e.g. backpack)…';
+        stopExploration();
+      } else {
+        btnChat.classList.remove('btn-outline-secondary');
+        btnChat.classList.add('btn-primary');
+        chatInput.style.display = 'flex';
+        exploreControls.style.display = 'none';
+        input.placeholder = 'Ask the agent…';
+        stopExploration();
+      }
+    }
+
+    function toggleExploration() {
+      if (explorationActive || explorationPaused) {
+        stopExploration();
+      } else {
+        startExploration();
+      }
+    }
+
+    function togglePauseExploration() {
+      if (explorationPaused) {
+        resumeExploration();
+      } else {
+        pauseExploration();
+      }
+    }
+
+    function toggleExploreSettings() {
+      const panel = document.getElementById('exploreSettingsPanel');
+      if (!panel) return;
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function getExploreSettings() {
+      const intervalSec = Math.max(5, Math.min(300, parseInt(document.getElementById('exploreIntervalSec')?.value || '15', 10)));
+      const strategy = document.getElementById('exploreStrategy')?.value || 'v4';
+      const autoNav = document.getElementById('exploreAutoNav')?.checked ?? true;
+      const minDwellMin = Math.max(1, Math.min(60, parseInt(document.getElementById('exploreMinDwellMin')?.value || '10', 10)));
+      const disabledRooms = [];
+      document.querySelectorAll('#exploreDisabledRoomsList input[type="checkbox"]').forEach(cb => {
+        if (cb.checked) disabledRooms.push(cb.value);
+      });
+      return { intervalSec, strategy, autoNav, minDwellMin, disabledRooms };
+    }
+
+    function startExploration() {
+      if (explorationActive) return;
+      const mapName = loadedMapName || document.getElementById('loadSelect').value;
+      if (!mapName) {
+        appendAgentBubble('agent', '⚠️ No map selected. Please load a map first.', false);
+        return;
+      }
+      const settings = getExploreSettings();
+      explorationActive = true;
+      explorationPaused = false;
+      explorationStepCount = 0;
+      document.getElementById('btnToggleExploration').textContent = 'Stop';
+      document.getElementById('btnToggleExploration').classList.remove('btn-success');
+      document.getElementById('btnToggleExploration').classList.add('btn-danger');
+      const pauseBtn = document.getElementById('btnPauseExploration');
+      if (pauseBtn) { pauseBtn.style.display = ''; pauseBtn.textContent = 'Pause'; pauseBtn.classList.remove('btn-success'); pauseBtn.classList.add('btn-warning'); }
+      document.getElementById('explorationStatus').textContent = 'Running…';
+      appendAgentBubble('agent', '🔍 Exploration started on map: ' + escapeHtml(mapName), false);
+      runExplorationStep();
+      explorationInterval = setInterval(runExplorationStep, settings.intervalSec * 1000);
+    }
+
+    async function pauseExploration() {
+      if (!explorationActive || explorationPaused) return;
+      explorationActive = false;
+      explorationPaused = true;
+      if (explorationInterval) {
+        clearInterval(explorationInterval);
+        explorationInterval = null;
+      }
+      // Cancel any active Nav2 goal so the user can manually drive out
+      try { await stopNavPlan(); } catch (e) { /* ignore */ }
+      const pauseBtn = document.getElementById('btnPauseExploration');
+      if (pauseBtn) { pauseBtn.textContent = 'Resume'; pauseBtn.classList.remove('btn-warning'); pauseBtn.classList.add('btn-success'); }
+      document.getElementById('explorationStatus').textContent = 'Paused — manual drive allowed';
+      appendAgentBubble('agent', '⏸️ Exploration paused. You can now manually move the robot out of the difficult area. Click Resume to continue.', false);
+    }
+
+    function resumeExploration() {
+      if (!explorationPaused) return;
+      const mapName = loadedMapName || document.getElementById('loadSelect').value;
+      if (!mapName) return;
+      const settings = getExploreSettings();
+      explorationActive = true;
+      explorationPaused = false;
+      const pauseBtn = document.getElementById('btnPauseExploration');
+      if (pauseBtn) { pauseBtn.textContent = 'Pause'; pauseBtn.classList.remove('btn-success'); pauseBtn.classList.add('btn-warning'); }
+      document.getElementById('explorationStatus').textContent = 'Running…';
+      appendAgentBubble('agent', '▶️ Exploration resumed on map: ' + escapeHtml(mapName), false);
+      runExplorationStep();
+      explorationInterval = setInterval(runExplorationStep, settings.intervalSec * 1000);
+    }
+
+    async function stopExploration() {
+      explorationActive = false;
+      explorationPaused = false;
+      if (explorationInterval) {
+        clearInterval(explorationInterval);
+        explorationInterval = null;
+      }
+      const btn = document.getElementById('btnToggleExploration');
+      if (btn) {
+        btn.textContent = 'Start';
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-success');
+      }
+      const pauseBtn = document.getElementById('btnPauseExploration');
+      if (pauseBtn) { pauseBtn.style.display = 'none'; pauseBtn.textContent = 'Pause'; pauseBtn.classList.remove('btn-success'); pauseBtn.classList.add('btn-warning'); }
+      const status = document.getElementById('explorationStatus');
+      if (status) status.textContent = 'Stopped';
+
+      // Clear old exploration history so next run starts from step 1
+      const mapName = loadedMapName || document.getElementById('loadSelect').value;
+      if (mapName) {
+        try {
+          await fetch('/api/slam/exploration/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ map_name: mapName }),
+          });
+        } catch (e) {
+          // ignore clear errors
+        }
+      }
+      explorationStepCount = 0;
+      document.getElementById('exploreCurrentRoom').textContent = '—';
+      document.getElementById('exploreDwellMin').textContent = '—';
+      document.getElementById('exploreStepNum').textContent = '—';
+      document.getElementById('exploreLastDecision').textContent = '—';
+      const captionEl = document.getElementById('exploreSceneCaption');
+      if (captionEl) captionEl.textContent = '';
+    }
+
+    async function runExplorationStep() {
+      if (!explorationActive) return;
+      // Skip while robot is already navigating
+      const navStatusStaleSec = (Date.now() - lastNavStatusTime) / 1000;
+      if (navStatus && navStatus.state === 'running' && navStatusStaleSec < 15) {
+        document.getElementById('explorationStatus').textContent = 'Navigating…';
+        return;
+      }
+      const mapName = loadedMapName || document.getElementById('loadSelect').value;
+      if (!mapName) return;
+
+      let robotPose = null;
+      try {
+        const pose = await fetchJson('/api/slam/robot_pose?_=' + Date.now());
+        if (pose && pose.position) {
+          robotPose = {
+            x: pose.position.x,
+            y: pose.position.y,
+            z: pose.position.z,
+            yaw: yawFromQuaternion(pose.orientation || { x: 0, y: 0, z: 0, w: 1 }),
+          };
+        }
+      } catch (e) {
+        // robot pose unavailable; backend will try to read it
+      }
+
+      try {
+        const settings = getExploreSettings();
+        const res = await fetch('/api/slam/exploration/step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ map_name: mapName, robot_pose: robotPose, strategy_type: settings.strategy, disabled_rooms: settings.disabledRooms, min_dwell_minutes: settings.minDwellMin }),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        explorationStepCount += 1;
+
+        // Update status UI
+        document.getElementById('exploreCurrentRoom').textContent = data.current_room || '—';
+        document.getElementById('exploreDwellMin').textContent =
+          data.dwell_minutes != null ? String(data.dwell_minutes) : '—';
+        document.getElementById('exploreStepNum').textContent = String(data.step_number || explorationStepCount);
+        document.getElementById('exploreLastDecision').textContent = data.action === 'move'
+          ? ('Move → ' + (data.target_room || '?'))
+          : 'Stay';
+        const captionEl = document.getElementById('exploreSceneCaption');
+        if (captionEl) {
+          captionEl.textContent = data.scene_caption ? ('Scene: ' + data.scene_caption) : '';
+        }
+
+        // Render decision bubble
+        const ts = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+        let bubbleText = `[${ts}] Step ${data.step_number}: ${data.action.toUpperCase()}`;
+        if (data.current_room) bubbleText += ` (in ${data.current_room})`;
+        if (data.dwell_minutes != null) bubbleText += ` · Dwell: ${data.dwell_minutes} min (real)`;
+        if (data.action === 'move' && data.target_room) {
+          bubbleText += `\n🎯 Move to: ${data.target_room}`;
+          if (data.target_x != null && data.target_y != null) {
+            bubbleText += ` (${data.target_x.toFixed(2)}, ${data.target_y.toFixed(2)})`;
+          }
+        }
+        if (data.scene_caption) bubbleText += '\n📷 ' + data.scene_caption;
+        if (data.reasoning) bubbleText += '\n' + data.reasoning;
+        if (data.error) bubbleText += '\n⚠️ ' + data.error;
+        let bubbleHtml = escapeHtml(bubbleText).replace(/\n/g, '<br>');
+        if (data.prompt) {
+          bubbleHtml += `<details style="margin-top:6px; font-size:11px; color:var(--muted);"><summary style="cursor:pointer; color:var(--accent);">📝 Prompt</summary><pre style="margin-top:4px; white-space:pre-wrap; word-break:break-word; background:rgba(15,23,42,0.5); padding:6px; border-radius:4px; border:1px solid var(--panel-border); font-size:10px;">${escapeHtml(data.prompt)}</pre></details>`;
+        }
+        appendAgentBubble('agent', bubbleHtml, true);
+
+        // If move, plan and optionally execute navigation
+        if (data.action === 'move' && data.target_x != null && data.target_y != null) {
+          if (settings.autoNav) {
+            document.getElementById('explorationStatus').textContent = 'Navigating…';
+            const navOk = await explorationPlanAndExecute(data.target_x, data.target_y, data.target_room || 'Target');
+            if (!navOk) {
+              appendAgentBubble('agent', '⚠️ Navigation to target failed. Will retry on next step.', false);
+              document.getElementById('explorationStatus').textContent = 'Running…';
+            }
+          } else {
+            appendAgentBubble('agent', `📍 Planned move to ${data.target_room} (${data.target_x.toFixed(2)}, ${data.target_y.toFixed(2)}). Auto-navigate is off — click Start to accept.`, false);
+            stopExploration();
+          }
+        }
+      } catch (err) {
+        appendAgentBubble('agent', 'Exploration step error: ' + escapeHtml(err.message), false);
+      }
+    }
+
+    async function handleObjectArrivalVerification() {
+      if (!pendingObjectTarget) return;
+      const target = pendingObjectTarget;
+      const name = target.object_name;
+      const goal = goalFromNavigationStatus(navStatus);
+      if (goal) target.visited.push([goal.x, goal.y]);
+      appendAgentBubble('agent', `\ud83d\udd0d Arrived \u2014 checking whether ${name} is visible\u2026`, false);
+      // Give the YOLO\u2192DB detection pipeline a few seconds to land fresh sightings.
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const res = await fetch('/api/navigation/verify_object_arrival', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            object_id: target.object_id,
+            object_name: name,
+            exclude: target.visited,
+            since_ts: target.since_ts,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.status === 'seen') {
+          const ev = data.evidence || {};
+          appendAgentBubble('agent', `\u2705 ${name} spotted near the goal (${ev.detections || 1} recent detection(s)). Search finished.`, false);
+          pendingObjectTarget = null;
+        } else if (data.status === 'not_seen' && data.next_candidate && target.legs < 4) {
+          const c = data.next_candidate;
+          target.legs += 1;
+          const where = c.room ? ` in ${c.room}` : '';
+          const when = c.last_seen_at ? `, last seen ${String(c.last_seen_at).slice(0, 16)}` : '';
+          appendAgentBubble('agent', `\u274c ${name} not visible here. Trying its next known location${where}${when} (${data.candidates_remaining} candidate(s) left).`, false);
+          await explorationPlanAndExecute(c.x, c.y, `Searching ${name}`);
+        } else if (data.status === 'unverifiable') {
+          appendAgentBubble('agent', `\u26a0\ufe0f Cannot verify whether ${name} is here \u2014 the perception pipeline appears offline. Giving up the search.`, false);
+          pendingObjectTarget = null;
+        } else {
+          appendAgentBubble('agent', `\ud83d\uded1 ${name} not found \u2014 all known locations were searched.`, false);
+          pendingObjectTarget = null;
+        }
+      } catch (err) {
+        appendAgentBubble('agent', `\u26a0\ufe0f Arrival verification failed (${err.message}).`, false);
+        pendingObjectTarget = null;
+      }
+    }
+
+    async function explorationPlanAndExecute(targetX, targetY, reason) {
+      pendingNavGoal = { x: targetX, y: targetY, theta: 0 };
+      document.getElementById('navGoalX').textContent = targetX.toFixed(3);
+      document.getElementById('navGoalY').textContent = targetY.toFixed(3);
+      document.getElementById('navGoalYaw').value = 0;
+      document.getElementById('navEditor').style.display = 'block';
+      agentNavMode = false;
+      plannedPath = null;
+      document.getElementById('btnPlanPath').style.display = 'block';
+      document.getElementById('btnExecuteNav').style.display = 'none';
+      document.getElementById('btnAgentAccept').style.display = 'none';
+      document.getElementById('btnAgentReject').style.display = 'none';
+      document.getElementById('navPlanInfo').textContent = 'Exploration target: planning…';
+      document.getElementById('btnPlanPath').disabled = true;
+
+      const startPose = lastRobotPose
+        ? {
+            x: Number(lastRobotPose.position?.x ?? 0),
+            y: Number(lastRobotPose.position?.y ?? 0),
+            z: Number(lastRobotPose.position?.z ?? 0),
+            yaw: yawFromQuaternion(lastRobotPose.orientation || { x: 0, y: 0, z: 0, w: 1 }),
+          }
+        : null;
+
+      try {
+        const res = await fetch('/api/map/plan_custom_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: startPose, goal: { x: targetX, y: targetY } }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        plannedPath = data.plan || null;
+        if (plannedPath && startPose && !plannedPath.start) {
+          plannedPath.start = startPose;
+        }
+        if (plannedPath && plannedPath.path && plannedPath.path.length > 1) {
+          document.getElementById('navPlanInfo').textContent =
+            `Exploration path: ${plannedPath.path_length_m?.toFixed(2) || '?'} m · ${plannedPath.num_waypoints || plannedPath.path.length} waypoints`;
+          document.getElementById('btnPlanPath').style.display = 'none';
+          drawMap();
+          // Auto-execute
+          await executeNavPlan();
+          return true;
+        } else {
+          document.getElementById('navPlanInfo').textContent = 'Exploration target: Nav2 could not find a path';
+          document.getElementById('btnPlanPath').disabled = false;
+          return false;
+        }
+      } catch (err) {
+        document.getElementById('navPlanInfo').textContent = `Exploration planning failed: ${err.message}`;
+        document.getElementById('btnPlanPath').disabled = false;
+        return false;
+      }
+    }
+
+    function startAutoRefresh() {
+      if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+      autoRefreshInterval = setInterval(() => { loadStatus(); loadMapData(); loadRobotPath(); refreshPathRecordingStatus(); }, 2000);
+    }
+    function stopAutoRefresh() {
+      if (autoRefreshInterval) { clearInterval(autoRefreshInterval); autoRefreshInterval = null; }
+    }
+
+    // Zoom / Pan interactions
+    const viewport = document.getElementById('viewport');
+    const canvas = document.getElementById('mapCanvas');
+
+    function zoomBy(dz, mx, my) {
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      if (mx == null) mx = width / 2;
+      if (my == null) my = height / 2;
+      const newZoom = Math.max(0.1, Math.min(20, zoom * dz));
+      const actualDz = newZoom / zoom;
+      panX = (mx - width / 2) * (1 - actualDz) + panX * actualDz;
+      panY = (my - height / 2) * (1 - actualDz) + panY * actualDz;
+      zoom = newZoom;
+      drawMap();
+    }
+    window.zoomBy = zoomBy;
+
+    function resetView() {
+      zoom = 1.0;
+      panX = 0;
+      panY = 0;
+      drawMap();
+    }
+    window.resetView = resetView;
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const dz = e.deltaY < 0 ? 1.15 : 0.87;
+      zoomBy(dz, e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', (e) => {
+      if (setPoseMode) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const mapPos = screenToMap(sx, sy);
+        if (mapPos) {
+          const defaultYaw = lastRobotPose ? yawFromQuaternion(lastRobotPose.orientation) : 0;
+          pendingPose = { x: mapPos.x, y: mapPos.y, theta: defaultYaw, screenX: sx, screenY: sy };
+          isSettingPoseDirection = true;
+          canvas.style.cursor = 'crosshair';
+          drawMap();
+        }
+        return;
+      }
+      if (navigateMode) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const mapPos = screenToMap(sx, sy);
+        if (mapPos) {
+          const defaultYaw = lastRobotPose ? yawFromQuaternion(lastRobotPose.orientation) : 0;
+          pendingNavGoal = { x: mapPos.x, y: mapPos.y, theta: defaultYaw, screenX: sx, screenY: sy };
+          isSettingNavigateGoal = true;
+          canvas.style.cursor = 'crosshair';
+          // Reset any previous plan
+          plannedPath = null;
+          document.getElementById('btnPlanPath').style.display = 'block';
+          document.getElementById('btnExecuteNav').style.display = 'none';
+          document.getElementById('navPlanInfo').textContent = 'Click Plan to compute path';
+          drawMap();
+        }
+        return;
+      }
+      if (markRoomMode) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        // Check if clicking near an existing point to drag it
+        let hitIndex = -1;
+        if (mapScaleX && mapScaleY && roomPoints.length > 0) {
+          for (let i = 0; i < roomPoints.length; i++) {
+            const px = mapScaleX(roomPoints[i].x);
+            const py = mapScaleY(roomPoints[i].y);
+            if (Math.hypot(px - sx, py - sy) <= 12) {
+              hitIndex = i;
+              break;
+            }
+          }
+        }
+        if (hitIndex >= 0) {
+          draggingRoomPointIndex = hitIndex;
+          didDrag = true;
+          canvas.style.cursor = 'grabbing';
+          return;
+        }
+        const mapPos = screenToMap(sx, sy);
+        if (mapPos && roomPoints.length < 4) {
+          roomPoints.push({ x: mapPos.x, y: mapPos.y });
+          updateRoomEditor();
+          drawMap();
+        }
+        return;
+      }
+      isDragging = true;
+      didDrag = false;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (draggingRoomPointIndex >= 0) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const mapPos = screenToMap(sx, sy);
+        if (mapPos) {
+          roomPoints[draggingRoomPointIndex] = { x: mapPos.x, y: mapPos.y };
+          drawMap();
+        }
+        return;
+      }
+      // Room mode hover cursor
+      if (markRoomMode && draggingRoomPointIndex < 0 && mapScaleX && mapScaleY) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        let hoveringPoint = false;
+        for (let i = 0; i < roomPoints.length; i++) {
+          const px = mapScaleX(roomPoints[i].x);
+          const py = mapScaleY(roomPoints[i].y);
+          if (Math.hypot(px - sx, py - sy) <= 12) {
+            hoveringPoint = true;
+            break;
+          }
+        }
+        canvas.style.cursor = hoveringPoint ? 'grab' : 'crosshair';
+      }
+      if (isSettingPoseDirection && pendingPose) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const dx = sx - pendingPose.screenX;
+        const dy = pendingPose.screenY - sy; // canvas Y is inverted vs map Y
+        pendingPose.theta = Math.atan2(dy, dx);
+        drawMap();
+        return;
+      }
+      if (isSettingNavigateGoal && pendingNavGoal) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const dx = sx - pendingNavGoal.screenX;
+        const dy = pendingNavGoal.screenY - sy;
+        pendingNavGoal.theta = Math.atan2(dy, dx);
+        drawMap();
+        return;
+      }
+      if (!isDragging) return;
+      didDrag = true;
+      const dx = e.clientX - dragLastX;
+      const dy = e.clientY - dragLastY;
+      panX += dx;
+      panY += dy;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      drawMap();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (draggingRoomPointIndex >= 0) {
+        draggingRoomPointIndex = -1;
+        if (markRoomMode) canvas.style.cursor = 'crosshair';
+        return;
+      }
+      if (isSettingPoseDirection) {
+        isSettingPoseDirection = false;
+        if (pendingPose) {
+          document.getElementById('poseX').textContent = pendingPose.x.toFixed(3);
+          document.getElementById('poseY').textContent = pendingPose.y.toFixed(3);
+          document.getElementById('poseYaw').value = Math.round(pendingPose.theta * 180 / Math.PI);
+          document.getElementById('poseEditor').style.display = 'block';
+        }
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
+      if (isSettingNavigateGoal) {
+        isSettingNavigateGoal = false;
+        if (pendingNavGoal) {
+          document.getElementById('navGoalX').textContent = pendingNavGoal.x.toFixed(3);
+          document.getElementById('navGoalY').textContent = pendingNavGoal.y.toFixed(3);
+          document.getElementById('navGoalYaw').value = Math.round(pendingNavGoal.theta * 180 / Math.PI);
+          document.getElementById('navEditor').style.display = 'block';
+        }
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
+      isDragging = false;
+      canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (draggingRoomPointIndex >= 0) {
+        draggingRoomPointIndex = -1;
+        if (markRoomMode) canvas.style.cursor = 'crosshair';
+      }
+      if (isSettingPoseDirection) {
+        isSettingPoseDirection = false;
+        if (pendingPose) {
+          document.getElementById('poseX').textContent = pendingPose.x.toFixed(3);
+          document.getElementById('poseY').textContent = pendingPose.y.toFixed(3);
+          document.getElementById('poseYaw').value = Math.round(pendingPose.theta * 180 / Math.PI);
+          document.getElementById('poseEditor').style.display = 'block';
+        }
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
+      if (isSettingNavigateGoal) {
+        isSettingNavigateGoal = false;
+        if (pendingNavGoal) {
+          document.getElementById('navGoalX').textContent = pendingNavGoal.x.toFixed(3);
+          document.getElementById('navGoalY').textContent = pendingNavGoal.y.toFixed(3);
+          document.getElementById('navGoalYaw').value = Math.round(pendingNavGoal.theta * 180 / Math.PI);
+          document.getElementById('navEditor').style.display = 'block';
+        }
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
+      isDragging = false;
+      canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('dblclick', () => {
+      resetView();
+    });
+
+    // Click on map detections (live or historical) to show popup
+    canvas.addEventListener('click', (e) => {
+      if (setPoseMode || navigateMode || markRoomMode || didDrag) return;
+      if (!showDetections || !viewBounds || !mapScaleX || !mapScaleY) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      let bestObs = null;
+      let bestDet = null;
+      let bestDist = Infinity;
+      // Check live detections first (red circles, larger hit area)
+      for (const det of lastAllDetections) {
+        if (!passesDetectionFilters(det, false)) continue;
+        if (!Number.isFinite(Number(det.x)) || !Number.isFinite(Number(det.y))) continue;
+        const px = mapScaleX(det.x);
+        const py = mapScaleY(det.y);
+        const d = Math.hypot(px - sx, py - sy);
+        if (d < 18 && d < bestDist) {
+          bestDist = d;
+          bestDet = det;
+          bestObs = null;
+        }
+      }
+      // Check historical observations (smaller dots)
+      if (!bestDet) {
+        for (const obs of lastHistoricalObservations) {
+          if (!passesDetectionFilters(obs, true)) continue;
+          if (!Number.isFinite(Number(obs.x)) || !Number.isFinite(Number(obs.y))) continue;
+          const px = mapScaleX(obs.x);
+          const py = mapScaleY(obs.y);
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < 14 && d < bestDist) {
+            bestDist = d;
+            bestObs = obs;
+          }
+        }
+      }
+      if (bestDet) {
+        showLiveDetPopup(bestDet, e.clientX, e.clientY);
+      } else if (bestObs) {
+        showObsPopup(bestObs, e.clientX, e.clientY);
+      } else {
+        closeObsPopup();
+      }
+    });
+
+    function showObsPopup(obs, clientX, clientY) {
+      const popup = document.getElementById('obsPopup');
+      const img = document.getElementById('obsPopupImg');
+      const title = document.getElementById('obsPopupTitle');
+      const meta = document.getElementById('obsPopupMeta');
+
+      img.src = obs.image_url || '';
+      const displayName = obs.object_name || obs.class_name || `class ${obs.class_id}`;
+      title.textContent = displayName;
+      const timeStr = obs.created_at ? new Date(obs.created_at).toLocaleString() : '-';
+      const obsCountStr = obs.observation_count
+        ? ` • ${obs.observation_count} observation${obs.observation_count === 1 ? '' : 's'}`
+        : '';
+      const posSource = obs.position_source === 'dynosam' ? 'DynoSAM'
+        : (obs.position_source === 'depth' ? 'Depth camera'
+        : (obs.position_source === 'yolo' ? 'YOLO only' : obs.position_source || '-'));
+      meta.innerHTML = `
+        <div>object #${obs.object_id}${obsCountStr}</div>
+        <div>pos: (${Number(obs.x).toFixed(2)}, ${Number(obs.y).toFixed(2)}, ${Number(obs.z).toFixed(2)})</div>
+        <div>source: ${posSource}</div>
+        <div>time: ${timeStr}</div>
+      `;
+      positionPopup(popup, clientX, clientY);
+    }
+
+    async function showLiveDetPopup(det, clientX, clientY) {
+      const popup = document.getElementById('obsPopup');
+      const img = document.getElementById('obsPopupImg');
+      const title = document.getElementById('obsPopupTitle');
+      const meta = document.getElementById('obsPopupMeta');
+
+      const trackId = det.track_id ?? det.instance_id ?? '?';
+      const displayName = det.class_name || `class ${det.class_id}`;
+      title.textContent = displayName;
+      img.src = '';
+      meta.innerHTML = `<div>track #${trackId} • loading image...</div>`;
+      positionPopup(popup, clientX, clientY);
+
+      try {
+        const res = await fetch(`/api/detections/latest-observation?track_id=${trackId}`);
+        if (!res.ok) throw new Error('No observation');
+        const obs = await res.json();
+        img.src = obs.image_url || '';
+        const posSource = obs.position_source === 'dynosam' ? 'DynoSAM'
+          : (obs.position_source === 'depth' ? 'Depth camera'
+          : (obs.position_source === 'yolo' ? 'YOLO only' : obs.position_source || '-'));
+        meta.innerHTML = `
+          <div>object #${obs.object_id} • track #${obs.yolo_track_id}</div>
+          <div>pos: (${Number(det.x).toFixed(2)}, ${Number(det.y).toFixed(2)}, ${Number(det.z).toFixed(2)})</div>
+          <div>source: ${posSource}</div>
+          <div>conf: ${Number(det.score || 0).toFixed(2)}</div>
+        `;
+      } catch (err) {
+        img.src = '';
+        const posSource = det.position_source === 'dynosam' ? 'DynoSAM'
+          : (det.position_source === 'depth' ? 'Depth camera'
+          : (det.position_source === 'yolo' ? 'YOLO only' : det.position_source || '-'));
+        meta.innerHTML = `
+          <div>track #${trackId}</div>
+          <div>pos: (${Number(det.x).toFixed(2)}, ${Number(det.y).toFixed(2)}, ${Number(det.z).toFixed(2)})</div>
+          <div>source: ${posSource}</div>
+          <div>conf: ${Number(det.score || 0).toFixed(2)}</div>
+          <div style="color:#f87171;font-size:10px;">No DB observation yet</div>
+        `;
+      }
+    }
+
+    function positionPopup(popup, clientX, clientY) {
+      popup.style.display = 'block';
+      const vpRect = document.getElementById('viewport').getBoundingClientRect();
+      let left = clientX - vpRect.left + 12;
+      let top = clientY - vpRect.top + 12;
+      const pw = popup.offsetWidth;
+      const ph = popup.offsetHeight;
+      if (left + pw > vpRect.width) left = clientX - vpRect.left - pw - 12;
+      if (top + ph > vpRect.height) top = clientY - vpRect.top - ph - 12;
+      popup.style.left = left + 'px';
+      popup.style.top = top + 'px';
+    }
+
+    function closeObsPopup() {
+      document.getElementById('obsPopup').style.display = 'none';
+    }
+
+    window.addEventListener('resize', drawMap);
+
+    loadAgentVlmSelection();
+    loadStatus();
+    loadMapData();
+    loadRobotPath();
+    refreshPathRecordingStatus();
+    updateCmdVelDisplays(null);
+    startAutoRefresh();
+  </script>
+</body>
+</html>

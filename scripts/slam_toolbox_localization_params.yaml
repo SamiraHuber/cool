@@ -1,0 +1,27 @@
+slam_toolbox:
+  ros__parameters:
+    use_sim_time: false
+    mode: localization
+    map_frame: map
+    odom_frame: spot/vision
+    base_frame: spot/body
+    scan_topic: /spot/velodyne/scan
+    # Restamp TF to wall-clock "now" so Nav2 does not see map<->odom as
+    # stale relative to freshly stamped planned paths.
+    restamp_tf: true
+    resolution: 0.05
+    # Slow down map publishing so the snapshot publisher (which serves the
+    # saved YAML/PGM map) dominates /map in localization mode. slam_toolbox's
+    # rebuilt map from the posegraph can clear unknown cells behind walls.
+    map_update_interval: 60.0
+    minimum_time_interval: 0.02
+    transform_publish_period: 0.02
+    throttle_scans: 1
+    max_laser_range: 12.0
+    min_laser_range: 0.35
+    minimum_travel_distance: 0.02
+    minimum_travel_heading: 0.02
+    use_scan_matching: true
+    use_scan_barycenter: true
+    enable_interactive_mode: true
+    debug_logging: false

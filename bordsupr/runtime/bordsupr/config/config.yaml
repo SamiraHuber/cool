@@ -1,0 +1,312 @@
+/**:
+  ros__parameters:
+    origin_image_topic: "/spot/camera/frontleft/image"
+    origin_depth_topic: "/spot/depth_registered/frontleft/image"
+    rgb_topic: "/spot/camera/frontleft/image_rotated"
+    depth_topic: "/spot/depth_registered/frontleft/image_rotated"
+    image_rotation: "cw"
+    # NOTE: DynoSAM is no longer used. The "/dynosam/*" topic names below are legacy
+    # names produced/consumed by LOCAL nodes (no DynoSAM backend required). Object 3D
+    # positions use the depth camera (observation_position_source_preference: "depth").
+    flow_topic: "/dynosam/flow"
+    seg_topic: "/dynosam/segmentation"
+    vlm_topic: "/dynosam/vlm_result"
+    yolo_output_topic: "/dynosam/yolo_output"
+    model_path: "/shared/yolo11m-seg.pt"
+    face_output_topic: "/dynosam/face_output"
+    interaction_topic: "/dynosam/interaction_output"
+    odom_topic: "/spot/odometry"
+    odometry_topic: "/spot/odometry"
+    resolution: 0.05
+    width: 400
+    height: 400
+    origin_x: -10.0
+    origin_y: -10.0
+    hit_probability: 0.72
+    free_probability: 0.43
+    occupied_threshold: 0.68
+    free_threshold: 0.35
+    detection_marker_ttl_sec: 30.0
+    max_log_odds: 3.5
+    min_log_odds: -2.5
+    occupancy_increment: 6
+    occupancy_decay: 0.0
+    free_space_decrement: 8
+    raytrace_free_space: true
+    max_raytrace_range_m: 8.0
+    robot_exclusion_radius_m: 0.85
+    min_points_per_occupied_cell: 2
+    isolated_occupied_min_neighbors: 1
+    max_occupancy_increment_per_scan: 18
+    max_hit_observations_per_cell_per_scan: 3
+    max_free_observations_per_cell_per_scan: 6
+
+    # Detection tuning: frontleft fisheye frames often produce person confidences
+    # in the 0.25-0.35 range, so 0.4 was filtering valid people.
+    conf_threshold: 0.25
+    min_person_confidence: 0.20
+
+    # Detector backend selection: "yolo" (default) or "owlv2"
+    detector_backend: "yolo"
+    owlv2_model_path: "google/owlv2-base-patch16-ensemble"
+    owlv2_classes: "person, bottle, ball, refrigerator, cup, cell phone, chair, office table, backpack"
+    owlv2_device: "cuda"
+    owlv2_imgsz: 640
+
+    # Two-stage detection: first detect people, then re-run detection on each
+    # person crop to find objects they are carrying/holding.
+    two_stage_person: false
+
+    sync_slop: 0.05
+    queue_size: 20
+    publish_every_n_frames: 3
+    vlm_api_url: "http://host.docker.internal:8003/v1"
+    lm_studio_url: ""
+    model_name: "Qwen/Qwen3.5-9B"
+    # Qwen3.5 is a reasoning model that emits chain-of-thought before answering; tell the
+    # vLLM chat template to skip the thinking block so captions/JSON come back clean.
+    vlm_disable_thinking: true
+    captions_enabled: true
+    # Neutral caption prompt: do NOT say "robot image" — reasoning VLMs (Qwen3.5) take it
+    # literally and open every caption with "There is no robot in this image..." when the
+    # frame has no robot. Keep it generic so the model just describes what's visible.
+    prompt_text: "Describe what is visible in this image in 2 sentences."
+    use_kimi: false
+    kimi_api_url: "https://api.moonshot.ai/v1"
+    kimi_api_key: ""
+    kimi_model: "kimi-k2.6"
+    use_gemini: false
+    gemini_api_key: ""
+    gemini_model: "gemini-2.5-pro"
+
+    # Database parameters
+    db_host: "db"
+    db_port: 5432
+    db_name: "bordsupr"
+    db_user: "postgres"
+    db_password: "postgres" # move it to .env file in production
+    face_reid_similarity_threshold: 0.60
+    face_reid_min_score_margin: 0.01
+    face_reid_track_ttl_sec: 20.0
+    face_track_db_lookup_window_sec: 180.0
+    # Never let face-correction move a track's body observations into a cluster
+    # already holding this many observations (an over-merged sink). 0 disables.
+    face_correction_max_cluster_observations: 200
+    # When true, a confident face identification reassigns ALL of this track's person
+    # observations to the face-identified cluster (not just the recent window).
+    # DISABLED: a BoTSORT track can drift across several people when they sit close
+    # (observed: one track carried 6 distinct face person_ids). Moving the WHOLE track
+    # to whichever person the LATEST face belongs to oscillates the track's obs between
+    # clusters and contaminates all of them (this created the mixed cluster 9812312702).
+    # With this false, only observations within face_correction_window_sec of the face
+    # follow it, so a drifting track splits naturally at the drift point.
+    face_correction_whole_track: false
+    # Time window (seconds) for face correction when whole_track is false. Only body
+    # observations created within this many seconds of the face's arrival are moved to
+    # the face-identified cluster. The live face pipeline lags the body by only ~2-4s
+    # (p99 ~51s via the pending-face retry queue), so 60s comfortably covers the lag
+    # while keeping the correction local to the drift region.
+    face_correction_window_sec: 60.0
+    # Anti-sink face gate (persons): a body-ONLY match (no confirming face) may not
+    # feed a person cluster that already holds this many observations. OSNet body
+    # embeddings are too weak to be trusted for large merges, so an unguarded body
+    # merge snowballs a multi-person sink. A later face can still merge correctly via
+    # face-correction. 0 disables the gate.
+    person_body_merge_face_required_obs: 50
+    # Step B (targeted harder body-merge gate): a body-ONLY person match into a cluster
+    # that already has a confirmed face identity must reach this body similarity to
+    # merge. OSNet cross-person best-match reaches ~0.95-0.97 for this cast, so the
+    # default 0.85 threshold lets DIFFERENT people merge into a face-identified cluster
+    # (the residual contamination Step A then splits). 0 disables the gate.
+    person_body_merge_face_identified_sim: 0.97
+    # When true, the centroid-consolidation pass will NOT merge two person clusters
+    # whose face observations prove they are different people (dominant face person_id
+    # differs). Prevents the body-centroid merge from re-merging clean per-person
+    # clusters into a sink (OSNet cross-person centroids reach ~0.97). Requires
+    # face_observations to be populated (live face pipeline).
+    face_identity_consolidation_guard_enabled: true
+    # Periodic face recluster (Step A): split person body-clusters whose face
+    # observations prove they mix multiple real people. BoTSORT tracks drift across
+    # people sitting close, so a body cluster can accumulate several distinct face
+    # person_ids; OSNet cannot separate them but ArcFace can. This pass moves the
+    # minority-person observations out so clusters stay single-identity.
+    face_recluster_split_enabled: true
+    # A face person_id needs at least this many faces in a cluster to count as a
+    # real sub-identity (below this it is a stray bystander face / noise).
+    face_recluster_min_person_faces: 4
+    # Only split when the dominant face person has >= this ratio x the runner-up's
+    # faces (genuinely ambiguous ~50/50 clusters are left alone).
+    face_recluster_dominant_ratio: 1.5
+    # Never split a cluster smaller than this many observations.
+    face_recluster_min_cluster_obs: 12
+    person_class_id: 0
+    min_face_size_px: 16
+    min_face_confidence: 0.45
+    max_persons_per_frame: 3
+    max_faces_per_person: 1
+    face_margin_ratio: 0.24
+    insightface_model: "buffalo_l"
+    insightface_device: "cuda"
+    insightface_det_size: 640
+    embedding_timeout_sec: 3.0
+    embedding_reid_similarity_threshold: 0.85
+    # Non-person classes use a lower threshold: ConvNeXt object embeddings are
+    # less viewpoint-robust than the fine-tuned person OSNet (objects F1 peaks
+    # at ~0.50 in the cluster experiments; the person threshold over-fragments).
+    embedding_reid_similarity_threshold_objects: 0.50
+    # Color-compatibility gate for non-person object re-id: reject a match when the
+    # detection's dominant color conflicts with the cluster's dominant color (e.g.
+    # pink vs black laptop). Chromatic colors must match; neutrals (black/white/
+    # gray) are mutually compatible. Prevents over-merging distinctly-colored objects.
+    object_color_gate_enabled: true
+    # Merge (consolidation) thresholds are deliberately higher than match
+    # thresholds: merges are irreversible, so they require near-certain matches.
+    consolidation_similarity_threshold: 0.90
+    consolidation_similarity_threshold_objects: 0.60
+    # Best-observation-match merge: a SMALL-FRAGMENT rescue pass. Centroid merging
+    # misses tiny clusters (1-3 obs): a 1-obs cluster is excluded by
+    # consolidation_min_observations_per_cluster and a 2-3-obs centroid is too noisy
+    # to clear the high person centroid threshold. This pass merges a tiny fragment
+    # into an established cluster when at least `..._min_strong_pairs` DISTINCT
+    # (non-identical, sim < 0.999) observation pairs clear `..._threshold`.
+    #
+    # DISABLED (thresholds 0.0): measured on real data this over-merges badly. The
+    # track-embedding cache makes intra-class similarity uniformly high, so even
+    # restricted to tiny fragments it fires for ~254 PERSON pairs (different people)
+    # and ~791 bottle pairs at these thresholds. OSNet embeddings do not provide a
+    # separable margin to distinguish genuine fragments from same-class lookalikes.
+    # Re-enable only after the track-embedding cache bug is fixed (per-observation
+    # embeddings), and re-validate the false-merge rate first. A threshold <= 0
+    # disables that class (persons and objects are gated independently).
+    consolidation_best_obs_threshold: 0.0
+    consolidation_best_obs_threshold_objects: 0.0
+    consolidation_best_obs_centroid_prefilter: 0.60
+    consolidation_best_obs_max_small_observations: 3
+    consolidation_best_obs_min_strong_pairs: 2
+    # Fragment churn on hard data (video runs) is normal; absorb it fast.
+    consolidation_every_n_observations: 20
+    consolidation_max_pairs_per_run: 50
+    # Allow small fragments to be reabsorbed, but require 2 observations so
+    # single-observation noise cannot be merged into large clusters.
+    consolidation_min_observations_per_cluster: 2
+    reid_knn_neighbors: 12
+    reid_average_weight: 0.65
+    # Anti-sink: require several of the k nearest neighbors to agree on the same
+    # cluster, and a clear margin over the runner-up. With hits=1 / margin=0.01 a
+    # single large "sink" cluster wins nearly every match (one weak neighbor is
+    # enough), which snowballs all people into one cluster. Requiring 3 agreeing
+    # neighbors and a 0.03 margin forces a genuine, consistent match.
+    reid_min_score_margin: 0.03
+    reid_min_neighbor_hits: 3
+    # Hard anti-sink: never let a cluster already holding this many observations be
+    # a body-embedding match target. A giant cluster is an over-merged sink whose
+    # diverse embeddings spuriously match almost anyone at high similarity, so it
+    # self-reinforces. Excluding it forces new-cluster creation instead. 0 disables.
+    reid_max_match_cluster_observations: 300
+    reid_min_observation_quality: 0.05
+    consolidation_min_observation_quality: 0.05
+    attributes_enabled: true
+    attribute_quality_enabled: true
+    attribute_color_enabled: true
+    attribute_person_parts_enabled: true
+    attribute_part_embeddings_enabled: false
+    attribute_super_resolution_enabled: false
+    attribute_super_resolution_method: "lanczos"
+    attribute_super_resolution_min_side: 96
+    attribute_segmentation_mode: "mask"
+    track_id_ttl_sec: 8.0
+    reid_max_position_distance_m: 2.0
+    static_object_max_position_distance_m: 0.8
+    static_object_class_ids: []
+    portable_object_class_ids:
+      - 24   # backpack
+      - 25   # umbrella
+      - 26   # handbag
+      - 27   # tie
+      - 28   # suitcase
+      - 39   # bottle
+      - 40   # wine glass
+      - 41   # cup
+      - 42   # fork
+      - 43   # knife
+      - 44   # spoon
+      - 45   # bowl
+      - 63   # laptop
+      - 64   # mouse
+      - 65   # remote
+      - 66   # keyboard
+      - 67   # cell phone
+      - 73   # book
+      - 74   # clock
+      - 75   # vase
+      - 76   # scissors
+      - 77   # teddy bear
+      - 78   # hair drier
+      - 79   # toothbrush
+    depth_estimation_min_valid_pixels: 20
+    depth_estimation_max_relative_std: 0.60
+    depth_estimation_person_min_valid_pixels: 10
+    depth_estimation_person_max_relative_std: 0.60
+    depth_estimation_center_crop_classes:
+      - "person"
+    depth_estimation_center_crop_ratio: 0.50
+    stream_queue_depth: 1000
+    rgb_match_window_sec: 1.25
+    rgb_cache_ttl_sec: 120.0
+    rgb_cache_max_entries: 4096
+    vlm_cache_ttl_sec: 300.0
+    vlm_cache_max_entries: 4096
+    scene_id_cache_max_entries: 4096
+    # Window for matching a face/interaction timestamp to a saved scene. Faces are
+    # detected per-frame but scenes are saved sparsely (~1Hz + dedup). A wide window
+    # (2.0s) linked interactions/faces to a *different* frame's scene, so the interaction
+    # caption (generated from its own frame) did not match the linked scene's image —
+    # the caption/image desync bug. 0.5s (the declared default) keeps the link tight; a
+    # face/interaction on a non-saved frame may get NULL scene_id, which is far preferable
+    # to a wrong caption/image pairing.
+    interaction_scene_match_window_sec: 0.5
+    # Max seconds between a face and the nearest body observation of the same track
+    # for face->body cluster linking (bounds against BoTSORT track-id reuse).
+    face_body_link_window_sec: 5.0
+    # Minimum IoU between a face's person crop bbox and a candidate observation's bbox
+    # for them to be linked. The face detector reports the exact person crop the face
+    # was detected on; track+scene matching is unreliable (tracks drift across people
+    # sitting close, and the face's scene_id can point at an adjacent frame whose
+    # same-track observation is a DIFFERENT person). The correct crop matches at IoU
+    # ~0.85-1.0 while a wrong crop is ~0.4-0.5, so 0.5 separates them. When a face has
+    # a person crop and no observation matches, the face is dropped (its true
+    # observation was not persisted) rather than mis-linked. 0 disables.
+    face_body_link_min_iou: 0.50
+    interaction_cache_ttl_sec: 120.0
+    interaction_cache_max_images: 4096
+    # Minimum VLM self-reported confidence for an interaction to be published/persisted.
+    interaction_min_confidence: 0.4
+    # Temporal dedup: suppress re-inserting the same (subject,object,action) within this
+    # window (seconds). 0 disables.
+    interaction_dedup_window_sec: 5.0
+    # Geometric pre-gate: skip the VLM call when no person is near/overlapping any object.
+    interaction_pregate_enabled: true
+    interaction_pregate_max_center_dist_ratio: 0.6
+    interaction_pregate_min_iou: 0.01
+    object_pose_cache_ttl_sec: 120.0
+    observation_position_source_preference: "depth"
+    pending_observation_timeout_sec: 30.0
+    scene_dedup_enabled: true
+    scene_save_mode: "interval"
+    scene_min_mean_abs_diff: 5.0
+    scene_min_changed_pixel_ratio: 0.03
+    scene_pixel_change_threshold: 12
+    scene_force_save_interval_sec: 1.0
+    # Scene image storage size: downscale the longest side to this many px and encode
+    # JPEG at this quality, to keep scene images small in the DB. 0 = no resize.
+    scene_image_max_side: 640
+    scene_image_jpeg_quality: 80
+    # Per-track scene-cut / subject-swap detection: when a tracked detection's crop
+    # changes sharply vs the previous frame of the SAME track, drop the track->object
+    # mapping and cached embedding so the detection is re-resolved/re-embedded fresh.
+    # Prevents two different people being merged when the tracker reuses a track id
+    # across a video cut. Tuned for person swaps (higher than whole-frame scene diff).
+    track_content_change_enabled: true
+    track_content_change_mean_abs_diff: 22.0
+    track_content_change_changed_pixel_ratio: 0.45
+    track_content_change_pixel_threshold: 25

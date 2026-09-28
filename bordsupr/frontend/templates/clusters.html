@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cluster Similarity Explorer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --panel: #ffffff;
+      --line: #d9deea;
+      --ink: #1f2430;
+      --muted: #5f6b7a;
+      --accent: #0b6e4f;
+      --accent-soft: #e9f7f1;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(circle at 20% 0%, #f8fbff 0%, #eef2f9 55%, #e8edf7 100%);
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .shell {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(6px);
+    }
+
+    .workspace {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .panel-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f7f9fd);
+    }
+
+    .panel-head-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .filter-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .filter-toggle input {
+      margin: 0;
+    }
+
+    .panel-body {
+      padding: 12px;
+      overflow: auto;
+      min-height: 0;
+    }
+
+    .cluster-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      background: #fff;
+      transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+    }
+
+    .cluster-item:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 12px rgba(17, 24, 39, 0.08);
+    }
+
+    .cluster-item.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .sim-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    .right-layout {
+      display: grid;
+      grid-template-rows: auto auto;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .right-split {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .sub-panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fff;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .self-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .method-note {
+      border-left: 3px solid var(--accent);
+      background: #f4fbf8;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #355448;
+      margin-bottom: 10px;
+    }
+
+    .sim-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .sim-image {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      display: block;
+      background: #f1f4fa;
+    }
+
+    .sim-body {
+      padding: 10px;
+    }
+
+    .similarity {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .face-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px;
+    }
+
+    .face-scene-shell {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #f6f9fc;
+      margin-bottom: 10px;
+    }
+
+    .face-scene-wrap {
+      position: relative;
+    }
+
+    .face-scene-image {
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      display: block;
+      background: #eef3f9;
+    }
+
+    .face-scene-overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .face-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .face-image {
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      display: block;
+      background: #f1f4fa;
+    }
+
+    .face-body {
+      padding: 8px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #ebf7f2;
+      color: #245346;
+      margin-right: 6px;
+    }
+
+    @media (max-width: 960px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+        .right-split {
+          grid-template-columns: 1fr;
+        }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    {% include "_topnav.html" %}
+
+    <div class="workspace">
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-head-row">
+            <div>
+              <h5 class="mb-1">Current Clusters</h5>
+              <div class="meta" id="clusterFilterMeta">Click one cluster to rank all other clusters by embedding similarity.</div>
+            </div>
+            <label class="filter-toggle">
+              <input type="checkbox" id="clusterObservationFilter" checked onchange="toggleClusterObservationFilter()">
+              only show clusters with more than 1 observation
+            </label>
+          </div>
+        </div>
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:12px;">
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#f9fbfd;">
+            <h6 class="mb-2" style="font-size:13px;">Compare Two Clusters</h6>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input type="text" id="compareA" placeholder="Cluster A ID" style="flex:1;min-width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;">
+              <input type="text" id="compareB" placeholder="Cluster B ID" style="flex:1;min-width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;">
+              <button onclick="compareTwoClusters()" style="padding:6px 12px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12px;cursor:pointer;font-weight:600;">Compare</button>
+            </div>
+            <div id="compareResult" class="meta" style="margin-top:8px;"></div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#f9fbfd;">
+            <h6 class="mb-2" style="font-size:13px;">Recluster All Objects</h6>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <input type="number" id="reclusterThreshold" value="0.643" min="0" max="1" step="0.001" style="flex:1;min-width:100px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;">
+              <button onclick="runRecluster()" style="padding:6px 12px;border-radius:8px;border:none;background:#0d6efd;color:#fff;font-size:12px;cursor:pointer;font-weight:600;">Recluster</button>
+            </div>
+            <div id="reclusterResult" class="meta" style="margin-top:8px;"></div>
+          </div>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#f9fbfd;">
+            <h6 class="mb-2" style="font-size:13px;">Recompute Embeddings</h6>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button onclick="runRecomputeEmbeddings()" style="padding:6px 12px;border-radius:8px;border:none;background:#6610f2;color:#fff;font-size:12px;cursor:pointer;font-weight:600;">Recompute</button>
+              <button onclick="runRecomputeThenRecluster()" style="padding:6px 12px;border-radius:8px;border:none;background:#198754;color:#fff;font-size:12px;cursor:pointer;font-weight:600;">Recompute + Recluster</button>
+            </div>
+            <div id="recomputeResult" class="meta" style="margin-top:8px;"></div>
+          </div>
+          <div id="clustersList" style="flex:1;overflow:auto;min-height:0;"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h5 class="mb-1" id="resultTitle">Similar Clusters</h5>
+          <div class="meta" id="resultMeta">Select a cluster on the left.</div>
+        </div>
+        <div class="panel-body" id="similarityBody">
+            <div class="right-layout">
+              <div class="right-split">
+                <div class="sub-panel" id="selfClusterCol">
+                  <h6 class="mb-2">Within Cluster</h6>
+                  <div class="meta">No cluster selected.</div>
+                </div>
+                <div class="sub-panel" id="otherClusterCol">
+                  <h6 class="mb-2">Other Clusters</h6>
+                  <div class="meta">No cluster selected.</div>
+                </div>
+              </div>
+              <div class="sub-panel" id="facesCol">
+                <h6 class="mb-2">Face Detections For This Cluster</h6>
+                <div class="meta">No cluster selected.</div>
+              </div>
+            </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    let allClusters = [];
+    let pendingConsolidationIds = new Set();
+    let pendingConsolidationPairs = [];
+    let selectedClusterId = null;
+    let currentClusterFaces = [];
+    let currentFaceSceneId = null;
+
+    async function loadPendingConsolidation() {
+      try {
+        const res = await fetch(appendBuildingFilter('/api/objects/pending-consolidation'));
+        if (!res.ok) return;
+        const data = await res.json();
+        pendingConsolidationIds = new Set((data.pending_object_ids || []).map(String));
+        pendingConsolidationPairs = data.pairs || [];
+        if (pendingConsolidationIds.size > 0) {
+          await fetch('/api/objects/merge-pending', { method: 'POST' });
+          pendingConsolidationIds = new Set();
+          pendingConsolidationPairs = [];
+        }
+      } catch (e) {
+        pendingConsolidationIds = new Set();
+        pendingConsolidationPairs = [];
+      }
+    }
+
+    function getClusterMinObservations() {
+      const checkbox = document.getElementById('clusterObservationFilter');
+      return checkbox && checkbox.checked ? 2 : 1;
+    }
+
+    function updateClusterFilterMeta() {
+      const minObservations = getClusterMinObservations();
+      const meta = document.getElementById('clusterFilterMeta');
+      if (!meta) {
+        return;
+      }
+      if (minObservations > 1) {
+        meta.textContent = 'Showing only clusters with at least 2 observations. Click one cluster to rank all other clusters by embedding similarity.';
+      } else {
+        meta.textContent = 'Showing all clusters, including single-observation clusters. Click one cluster to rank all other clusters by embedding similarity.';
+      }
+    }
+
+    function esc(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function loadClusters() {
+      updateClusterFilterMeta();
+      const minObservations = getClusterMinObservations();
+      const [res] = await Promise.all([
+        fetch(appendBuildingFilter(`/api/objects?min_observations=${minObservations}`)),
+        loadPendingConsolidation(),
+      ]);
+      allClusters = await res.json();
+      if (selectedClusterId && !allClusters.some(cluster => String(cluster.id) === String(selectedClusterId))) {
+        selectedClusterId = null;
+        const title = document.getElementById('resultTitle');
+        const meta = document.getElementById('resultMeta');
+        const selfCol = document.getElementById('selfClusterCol');
+        const otherCol = document.getElementById('otherClusterCol');
+        title.textContent = 'Similar Clusters';
+        meta.textContent = 'Select a cluster on the left.';
+        selfCol.innerHTML = '<h6 class="mb-2">Within Cluster</h6><div class="meta">No cluster selected.</div>';
+        otherCol.innerHTML = '<h6 class="mb-2">Other Clusters</h6><div class="meta">No cluster selected.</div>';
+      }
+      renderClusterList();
+    }
+
+    async function toggleClusterObservationFilter() {
+      await loadClusters();
+      if (selectedClusterId) {
+        await selectCluster(selectedClusterId);
+      }
+    }
+
+    function renderBackendBadges(item) {
+      const badges = [];
+      if (item.detection_backend) {
+        const detColor = item.detection_backend === 'owlv2' ? '#6610f2' : '#0d6efd';
+        badges.push(`<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:${detColor};color:#fff;font-size:10px;margin-right:3px;">${esc(item.detection_backend)}</span>`);
+      }
+      if (item.embedding_backend) {
+        const embColor = item.embedding_backend === 'osnet' ? '#198754' : '#fd7e14';
+        badges.push(`<span style="display:inline-block;padding:1px 5px;border-radius:4px;background:${embColor};color:#fff;font-size:10px;margin-right:3px;">${esc(item.embedding_backend)}</span>`);
+      }
+      return badges.join('');
+    }
+
+    function renderObservationStrip(observations) {
+      if (!Array.isArray(observations) || !observations.length) {
+        return '<div class="meta">No observations available.</div>';
+      }
+
+      return `
+        <div class="obs-strip">
+          ${observations.map((item) => {
+            const yolo = item.yolo_track_id === null || item.yolo_track_id === undefined ? '-' : esc(item.yolo_track_id);
+            const when = item.created_at ? new Date(item.created_at).toLocaleString() : '-';
+            return `
+              <div class="obs-thumb">
+                <img src="${item.image_url}" alt="cluster observation" loading="lazy" decoding="async" />
+                <div class="obs-meta">
+                  <div>obs: ${esc(item.observation_id)}</div>
+                  <div>${renderBackendBadges(item)}</div>
+                  <div>yolo: ${yolo}</div>
+                  <div>${when}</div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderClusterList() {
+      const root = document.getElementById('clustersList');
+      if (!allClusters.length) {
+        root.innerHTML = '<div class="meta">No clusters found.</div>';
+        return;
+      }
+
+      root.innerHTML = allClusters.map((cluster) => {
+        const activeClass = selectedClusterId === cluster.id ? 'active' : '';
+        const label = cluster.yolo_track_id === null ? '-' : esc(cluster.yolo_track_id);
+        const person = cluster.person_id === null ? '-' : esc(cluster.person_id);
+        const classId = (cluster.class_name ? (esc(cluster.class_name) + ' (' + esc(cluster.class_id) + ')') : (cluster.class_id === null ? '-' : esc(cluster.class_id)));
+        const count = cluster.observation_count === null ? 0 : cluster.observation_count;
+        const lastSeen = cluster.last_seen_at ? new Date(cluster.last_seen_at).toLocaleString() : '-';
+        return `
+          <div class="cluster-item ${activeClass}" onclick="selectCluster('${esc(cluster.id)}')">
+            <div><strong>${esc(cluster.id)}</strong></div>
+            <div class="meta">person: ${person} | class: ${classId}</div>
+            <div class="meta">latest observation yolo: ${label}</div>
+            <div class="meta">observations: ${count} | last seen: ${lastSeen}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function selectCluster(clusterId) {
+      selectedClusterId = clusterId;
+      renderClusterList();
+
+      const title = document.getElementById('resultTitle');
+      const meta = document.getElementById('resultMeta');
+      const selfCol = document.getElementById('selfClusterCol');
+      const otherCol = document.getElementById('otherClusterCol');
+      const facesCol = document.getElementById('facesCol');
+
+      title.textContent = `Similarity Ranking for ${clusterId}`;
+      meta.textContent = 'Loading...';
+      selfCol.innerHTML = '<h6 class="mb-2">Within Cluster</h6><div class="meta">Loading...</div>';
+      otherCol.innerHTML = '<h6 class="mb-2">Other Clusters</h6><div class="meta">Loading...</div>';
+      facesCol.innerHTML = '<h6 class="mb-2">Face Detections For This Cluster</h6><div class="meta">Loading...</div>';
+
+      try {
+        const [similarRes, intraRes, facesRes] = await Promise.all([
+          fetch(appendBuildingFilter(`/api/clusters/${encodeURIComponent(clusterId)}/similar?limit=200`)),
+          fetch(appendBuildingFilter(`/api/clusters/${encodeURIComponent(clusterId)}/intra-similar?limit=30`)),
+          fetch(appendBuildingFilter(`/api/clusters/${encodeURIComponent(clusterId)}/faces?limit=120`)),
+        ]);
+
+        if (!similarRes.ok) {
+          const errText = await similarRes.text();
+          throw new Error(errText || `Similarity request failed with ${similarRes.status}`);
+        }
+        if (!intraRes.ok) {
+          const errText = await intraRes.text();
+          throw new Error(errText || `Intra-cluster request failed with ${intraRes.status}`);
+        }
+        if (!facesRes.ok) {
+          const errText = await facesRes.text();
+          throw new Error(errText || `Cluster faces request failed with ${facesRes.status}`);
+        }
+
+        const payload = await similarRes.json();
+        const intraPayload = await intraRes.json();
+        const facesPayload = await facesRes.json();
+        const items = (payload.results || []).filter((item) => String(item.cluster_id) !== String(clusterId));
+        const intraItems = intraPayload.results || [];
+
+        meta.textContent = `${items.length} clusters ranked by descending similarity | ${facesPayload.count || 0} linked face detections.`;
+
+        selfCol.innerHTML = `
+          <h6 class="mb-2">Within Cluster</h6>
+          <div class="method-note">
+            Similarity is cosine similarity to the selected cluster centroid.
+            Centroid = average embedding of all images in this cluster.
+          </div>
+          <div class="meta mb-2">${esc(intraPayload.total_observations || intraItems.length)} observations</div>
+          ${intraItems.length ? `
+            <div class="self-grid">
+              ${intraItems.map((item) => {
+                const sim = Number(item.similarity || 0);
+                const simPct = (sim * 100).toFixed(2);
+                const when = item.created_at ? new Date(item.created_at).toLocaleString() : '-';
+                return `
+                  <article class="sim-card">
+                    <img class="sim-image" src="${item.image_url}" alt="same cluster image" />
+                    <div class="sim-body">
+                      <div class="similarity">${simPct}%</div>
+                      <div class="meta">obs: ${esc(item.observation_id)}</div>
+                      <div class="meta">${renderBackendBadges(item)}</div>
+                      <div class="meta">${when}</div>
+                      <button class="btn btn-sm btn-outline-danger" style="font-size:10px;padding:2px 6px;margin-top:4px;" onclick="event.stopPropagation();deleteObservation(${esc(item.observation_id)})">Delete</button>
+                    </div>
+                  </article>
+                `;
+              }).join('')}
+            </div>
+          ` : '<div class="meta">No observations in this cluster.</div>'}
+        `;
+
+        if (!items.length) {
+          otherCol.innerHTML = '<h6 class="mb-2">Other Clusters</h6><div class="meta">No other clusters to compare.</div>';
+          renderFaceDetectionsBlock(facesPayload.results || []);
+          return;
+        }
+
+        otherCol.innerHTML = `
+          <h6 class="mb-2">Other Clusters</h6>
+          <div class="sim-grid">
+            ${items.map((item) => {
+              const sim = Number(item.similarity || 0);
+              const simPct = (sim * 100).toFixed(2);
+              const img = item.image_url ? `<img class="sim-image" src="${item.image_url}" alt="cluster image" />` : '<div class="sim-image d-flex align-items-center justify-content-center meta">No image</div>';
+              const yolo = item.yolo_track_id === null ? '-' : esc(item.yolo_track_id);
+              const person = item.person_id === null ? '-' : esc(item.person_id);
+              const cls = (item.class_name ? (esc(item.class_name) + ' (' + esc(item.class_id) + ')') : (item.class_id === null ? '-' : esc(item.class_id)));
+              const when = item.observation_created_at ? new Date(item.observation_created_at).toLocaleString() : '-';
+              const observationCount = Number(item.observation_count || (Array.isArray(item.observations) ? item.observations.length : 0));
+              return `
+                <article class="sim-card" onclick="selectCluster('${esc(item.cluster_id)}')" style="cursor:pointer">
+                  ${img}
+                  <div class="sim-body">
+                    <div><strong>${esc(item.cluster_id)}</strong></div>
+                    <div class="similarity">similarity: ${simPct}%</div>
+                    <div class="meta">person: ${person} | class: ${cls}</div>
+                    <div class="meta">observation yolo: ${yolo}</div>
+                    <div class="meta">latest observation: ${when}</div>
+                    <div class="meta">${observationCount} observations</div>
+                    ${renderObservationStrip(item.observations || [])}
+                  </div>
+                </article>
+              `;
+            }).join('')}
+          </div>
+        `;
+
+        renderFaceDetectionsBlock(facesPayload.results || []);
+      } catch (err) {
+        meta.textContent = 'Failed to load similarities.';
+        selfCol.innerHTML = `<h6 class="mb-2">Within Cluster</h6><div class="meta">${esc(err.message)}</div>`;
+        otherCol.innerHTML = `<h6 class="mb-2">Other Clusters</h6><div class="meta">${esc(err.message)}</div>`;
+        facesCol.innerHTML = `<h6 class="mb-2">Face Detections For This Cluster</h6><div class="meta">${esc(err.message)}</div>`;
+      }
+    }
+
+    function normalizeSceneKey(value) {
+      if (value === null || value === undefined) {
+        return '__none__';
+      }
+      return String(value);
+    }
+
+    function renderFaceDetectionsBlock(faces) {
+      currentClusterFaces = Array.isArray(faces) ? faces : [];
+      const root = document.getElementById('facesCol');
+
+      if (!currentClusterFaces.length) {
+        currentFaceSceneId = null;
+        root.innerHTML = '<h6 class="mb-2">Face Detections For This Cluster</h6><div class="meta">No faces linked to this cluster yet.</div>';
+        return;
+      }
+
+      const scenesById = new Map();
+      for (const item of currentClusterFaces) {
+        const key = normalizeSceneKey(item.scene_id);
+        if (!scenesById.has(key)) {
+          scenesById.set(key, {
+            key,
+            sceneId: item.scene_id,
+            sceneImageUrl: item.scene_image_url,
+            sceneTimestamp: item.scene_timestamp,
+            faces: [],
+          });
+        }
+        scenesById.get(key).faces.push(item);
+      }
+
+      const scenes = Array.from(scenesById.values()).sort((a, b) => {
+        const at = a.sceneTimestamp ? new Date(a.sceneTimestamp).getTime() : 0;
+        const bt = b.sceneTimestamp ? new Date(b.sceneTimestamp).getTime() : 0;
+        return bt - at;
+      });
+
+      if (!scenes.find((entry) => String(entry.sceneId) === String(currentFaceSceneId))) {
+        currentFaceSceneId = scenes[0].sceneId;
+      }
+
+      const selected = scenes.find((entry) => String(entry.sceneId) === String(currentFaceSceneId)) || scenes[0];
+      const selectedFaces = selected.faces || [];
+
+      root.innerHTML = `
+        <h6 class="mb-2">Face Detections For This Cluster</h6>
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <label class="meta mb-0" for="faceSceneSelect">Scene:</label>
+          <select id="faceSceneSelect" class="form-select form-select-sm" style="max-width: 260px;" onchange="switchFaceScene(this.value)">
+            ${scenes.map((entry) => {
+              const selectedAttr = String(entry.sceneId) === String(selected.sceneId) ? 'selected' : '';
+              const labelScene = entry.sceneId === null || entry.sceneId === undefined ? 'scene: -' : `scene: ${esc(entry.sceneId)}`;
+              const labelTime = entry.sceneTimestamp ? new Date(entry.sceneTimestamp).toLocaleString() : 'no timestamp';
+              return `<option value="${esc(entry.key)}" ${selectedAttr}>${labelScene} | ${esc(labelTime)} | faces: ${entry.faces.length}</option>`;
+            }).join('')}
+          </select>
+        </div>
+
+        ${selected.sceneImageUrl ? `
+          <div class="face-scene-shell">
+            <div class="face-scene-wrap">
+              <img id="faceSceneImage" class="face-scene-image" src="${selected.sceneImageUrl}" alt="scene face overlay" />
+              <canvas id="faceSceneCanvas" class="face-scene-overlay"></canvas>
+            </div>
+          </div>
+        ` : '<div class="meta mb-2">Selected scene has no stored image for overlay.</div>'}
+
+        <div class="face-grid">
+          ${selectedFaces.map((item) => {
+            const when = item.created_at ? new Date(item.created_at).toLocaleString() : '-';
+            const directPill = item.direct_cluster_match
+              ? '<span class="pill">direct cluster face</span>'
+              : '<span class="pill">person-linked face</span>';
+            return `
+              <article class="face-card">
+                <img class="face-image" src="${item.image_url}" alt="face ${esc(item.face_observation_id)}" />
+                <div class="face-body">
+                  <div>${directPill}</div>
+                  <div class="meta">face obs: ${esc(item.face_observation_id)}</div>
+                  <div class="meta">person: ${item.person_id === null ? '-' : esc(item.person_id)}</div>
+                  <div class="meta">track: ${item.yolo_track_id === null ? '-' : esc(item.yolo_track_id)}</div>
+                  <div class="meta">score: ${item.score === null ? '-' : Number(item.score).toFixed(3)}</div>
+                  <div class="meta">${esc(when)}</div>
+                </div>
+              </article>
+            `;
+          }).join('')}
+        </div>
+      `;
+
+      const sceneImage = document.getElementById('faceSceneImage');
+      if (sceneImage) {
+        sceneImage.addEventListener('load', drawFaceOverlay, { once: true });
+      }
+      window.requestAnimationFrame(drawFaceOverlay);
+    }
+
+    function switchFaceScene(sceneKey) {
+      currentFaceSceneId = sceneKey === '__none__' ? null : sceneKey;
+      renderFaceDetectionsBlock(currentClusterFaces);
+    }
+
+    function toFiniteBox(box) {
+      if (!Array.isArray(box) || box.length !== 4) {
+        return null;
+      }
+      const nums = box.map((v) => Number(v));
+      if (!nums.every(Number.isFinite)) {
+        return null;
+      }
+      return nums;
+    }
+
+    function drawFaceOverlay() {
+      const image = document.getElementById('faceSceneImage');
+      const canvas = document.getElementById('faceSceneCanvas');
+      if (!image || !canvas || !image.complete || !image.naturalWidth || !image.naturalHeight) {
+        return;
+      }
+
+      const overlayFaces = currentClusterFaces.filter((item) => String(item.scene_id) === String(currentFaceSceneId));
+      const width = image.clientWidth;
+      const height = image.clientHeight;
+      if (width <= 0 || height <= 0) {
+        return;
+      }
+
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        return;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const sx = width / image.naturalWidth;
+      const sy = height / image.naturalHeight;
+
+      function drawBox(box, color, label) {
+        const valid = toFiniteBox(box);
+        if (!valid) {
+          return;
+        }
+        const [x1, y1, x2, y2] = valid;
+        const rx = x1 * sx;
+        const ry = y1 * sy;
+        const rw = Math.max(1, (x2 - x1) * sx);
+        const rh = Math.max(1, (y2 - y1) * sy);
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rx, ry, rw, rh);
+
+        ctx.fillStyle = color;
+        ctx.font = '12px Segoe UI, sans-serif';
+        const textY = Math.max(14, ry - 4);
+        ctx.fillText(label, rx + 2, textY);
+      }
+
+      for (const item of overlayFaces) {
+        drawBox(item.person_bbox, 'rgba(72, 201, 176, 0.95)', 'person');
+        drawBox(item.face_bbox, 'rgba(72, 149, 239, 0.95)', 'face');
+      }
+    }
+
+    async function compareTwoClusters() {
+      const a = document.getElementById('compareA').value.trim();
+      const b = document.getElementById('compareB').value.trim();
+      const resultDiv = document.getElementById('compareResult');
+      if (!a || !b) {
+        resultDiv.innerHTML = '<span style="color:#b00020;">Enter both cluster IDs.</span>';
+        return;
+      }
+      if (a === b) {
+        resultDiv.innerHTML = '<span style="color:#b00020;">Cluster IDs must be different.</span>';
+        return;
+      }
+      resultDiv.textContent = 'Loading...';
+      try {
+        const res = await fetch(appendBuildingFilter(`/api/clusters/compare?cluster_a=${encodeURIComponent(a)}&cluster_b=${encodeURIComponent(b)}`));
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `Compare request failed with ${res.status}`);
+        }
+        const data = await res.json();
+        const sim = Number(data.similarity || 0);
+        const simPct = (sim * 100).toFixed(2);
+        const clsA = data.class_name_a ? (esc(data.class_name_a) + ' (' + esc(data.class_a) + ')') : esc(data.class_a);
+        const clsB = data.class_name_b ? (esc(data.class_name_b) + ' (' + esc(data.class_b) + ')') : esc(data.class_b);
+        resultDiv.innerHTML = `
+          <div style="border-left:3px solid var(--accent);background:#f4fbf8;padding:8px 10px;border-radius:8px;">
+            <div style="font-weight:700;color:var(--accent);font-size:15px;">${simPct}% similar</div>
+            <div class="meta">${esc(data.cluster_a)} (${clsA}, ${data.count_a} obs) vs ${esc(data.cluster_b)} (${clsB}, ${data.count_b} obs)</div>
+          </div>
+        `;
+      } catch (err) {
+        resultDiv.innerHTML = `<span style="color:#b00020;">${esc(err.message)}</span>`;
+      }
+    }
+
+    let _reclusterPollTimer = null;
+
+    async function runRecluster() {
+      const thresholdInput = document.getElementById('reclusterThreshold');
+      const resultDiv = document.getElementById('reclusterResult');
+      const btn = document.querySelector('button[onclick="runRecluster()"]');
+      const threshold = parseFloat(thresholdInput.value);
+      if (isNaN(threshold) || threshold < 0 || threshold > 1) {
+        resultDiv.innerHTML = '<span style="color:#b00020;">Threshold must be between 0 and 1.</span>';
+        return;
+      }
+      if (!window.confirm('This will re-cluster ALL observations from scratch. It can both merge and split clusters. Continue?')) {
+        return;
+      }
+      if (_reclusterPollTimer) {
+        clearInterval(_reclusterPollTimer);
+        _reclusterPollTimer = null;
+      }
+      if (btn) btn.disabled = true;
+      resultDiv.textContent = 'Starting recluster...';
+      try {
+        const res = await fetch(`/api/objects/recluster?similarity_threshold=${threshold}`, { method: 'POST' });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `Recluster failed with ${res.status}`);
+        }
+        const startData = await res.json();
+        const jobId = startData.job_id;
+        resultDiv.innerHTML = `<span class="meta">Reclustering… job <code>${esc(jobId)}</code> started.</span>`;
+
+        _reclusterPollTimer = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/objects/recluster/jobs/${jobId}`);
+            if (!pollRes.ok) return;
+            const job = await pollRes.json();
+            if (job.status === 'running') {
+              const done = job.classes_done || 0;
+              const total = job.total_classes || 0;
+              resultDiv.innerHTML = `<span class="meta">Reclustering… class ${done}${total ? ' / ' + total : ''}</span>`;
+            } else if (job.status === 'done') {
+              clearInterval(_reclusterPollTimer);
+              _reclusterPollTimer = null;
+              if (btn) btn.disabled = false;
+              const r = job.result || {};
+              resultDiv.innerHTML = `
+                <div style="border-left:3px solid #0d6efd;background:#f0f5ff;padding:8px 10px;border-radius:8px;">
+                  <div style="font-weight:700;color:#0d6efd;font-size:14px;">Recluster complete</div>
+                  <div class="meta">Created ${r.objects_created || 0} objects, deleted ${r.objects_deleted || 0}, reassigned ${r.observations_reassigned || 0} observations across ${r.classes_processed || 0} classes.</div>
+                </div>
+              `;
+              await loadClusters();
+            } else if (job.status === 'error') {
+              clearInterval(_reclusterPollTimer);
+              _reclusterPollTimer = null;
+              if (btn) btn.disabled = false;
+              resultDiv.innerHTML = `<span style="color:#b00020;">${esc(job.error || 'Unknown error')}</span>`;
+            }
+          } catch (e) {
+            // ignore poll errors
+          }
+        }, 2000);
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        resultDiv.innerHTML = `<span style="color:#b00020;">${esc(err.message)}</span>`;
+      }
+    }
+
+    let _recomputePollTimer = null;
+
+    async function _pollGenericJob(endpointBase, jobId, resultDiv, btnSelector, onDone) {
+      const btn = btnSelector ? document.querySelector(btnSelector) : null;
+      if (btn) btn.disabled = true;
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch(`${endpointBase}/${jobId}`);
+          if (!res.ok) return;
+          const job = await res.json();
+          if (job.status === 'running') {
+            const done = job.observations_done || job.classes_done || 0;
+            const total = job.total_observations || job.total_classes || 0;
+            resultDiv.innerHTML = `<span class="meta">Processing… ${done}${total ? ' / ' + total : ''}</span>`;
+          } else if (job.status === 'done') {
+            clearInterval(poll);
+            if (btn) btn.disabled = false;
+            onDone(job);
+          } else if (job.status === 'error') {
+            clearInterval(poll);
+            if (btn) btn.disabled = false;
+            resultDiv.innerHTML = `<span style="color:#b00020;">${esc(job.error || 'Unknown error')}</span>`;
+          }
+        } catch (e) {}
+      }, 2000);
+      return poll;
+    }
+
+    async function runRecomputeEmbeddings() {
+      const resultDiv = document.getElementById('recomputeResult');
+      if (!window.confirm('This will recompute embeddings for ALL observations using OSNet finetuned (persons) and ConvNeXt-Tiny (objects). Continue?')) {
+        return;
+      }
+      if (_recomputePollTimer) { clearInterval(_recomputePollTimer); _recomputePollTimer = null; }
+      resultDiv.textContent = 'Starting embedding recomputation...';
+      try {
+        const res = await fetch('/api/objects/recompute-embeddings', { method: 'POST' });
+        if (!res.ok) { throw new Error(await res.text() || `Failed with ${res.status}`); }
+        const data = await res.json();
+        resultDiv.innerHTML = `<span class="meta">Job <code>${esc(data.job_id)}</code> started.</span>`;
+        _recomputePollTimer = await _pollGenericJob('/api/objects/recompute-embeddings/jobs', data.job_id, resultDiv, 'button[onclick="runRecomputeEmbeddings()"]', (job) => {
+          const r = job.result || {};
+          resultDiv.innerHTML = `
+            <div style="border-left:3px solid #6610f2;background:#f5f0ff;padding:8px 10px;border-radius:8px;">
+              <div style="font-weight:700;color:#6610f2;font-size:14px;">Embeddings recomputed</div>
+              <div class="meta">Updated ${r.observations_updated || 0}, skipped ${r.observations_skipped || 0}, errors ${r.observations_errored || 0}</div>
+            </div>
+          `;
+        });
+      } catch (err) {
+        resultDiv.innerHTML = `<span style="color:#b00020;">${esc(err.message)}</span>`;
+      }
+    }
+
+    async function runRecomputeThenRecluster() {
+      const resultDiv = document.getElementById('recomputeResult');
+      const thresholdInput = document.getElementById('reclusterThreshold');
+      const threshold = parseFloat(thresholdInput.value);
+      if (isNaN(threshold) || threshold < 0 || threshold > 1) {
+        resultDiv.innerHTML = '<span style="color:#b00020;">Threshold must be between 0 and 1.</span>';
+        return;
+      }
+      if (!window.confirm('This will recompute ALL embeddings, then recluster. It may take several minutes. Continue?')) {
+        return;
+      }
+      if (_recomputePollTimer) { clearInterval(_recomputePollTimer); _recomputePollTimer = null; }
+      resultDiv.textContent = 'Step 1/2: Recomputing embeddings...';
+      try {
+        const recRes = await fetch('/api/objects/recompute-embeddings', { method: 'POST' });
+        if (!recRes.ok) { throw new Error(await recRes.text() || `Failed with ${recRes.status}`); }
+        const recData = await recRes.json();
+        _recomputePollTimer = await _pollGenericJob('/api/objects/recompute-embeddings/jobs', recData.job_id, resultDiv, 'button[onclick="runRecomputeThenRecluster()"]', async (job) => {
+          const r = job.result || {};
+          resultDiv.innerHTML = `<span class="meta">Embeddings done (updated ${r.observations_updated || 0}). Step 2/2: Reclustering…</span>`;
+          // Start recluster
+          const clRes = await fetch(`/api/objects/recluster?similarity_threshold=${threshold}`, { method: 'POST' });
+          if (!clRes.ok) { throw new Error(await clRes.text() || `Recluster failed with ${clRes.status}`); }
+          const clData = await clRes.json();
+          _recomputePollTimer = await _pollGenericJob('/api/objects/recluster/jobs', clData.job_id, resultDiv, 'button[onclick="runRecomputeThenRecluster()"]', (clJob) => {
+            const cr = clJob.result || {};
+            resultDiv.innerHTML = `
+              <div style="border-left:3px solid #198754;background:#e9f7f1;padding:8px 10px;border-radius:8px;">
+                <div style="font-weight:700;color:#198754;font-size:14px;">Recompute + Recluster complete</div>
+                <div class="meta">Embeddings updated: ${r.observations_updated || 0}. Created ${cr.objects_created || 0}, deleted ${cr.objects_deleted || 0}, reassigned ${cr.observations_reassigned || 0}.</div>
+              </div>
+            `;
+            loadClusters();
+          });
+        });
+      } catch (err) {
+        resultDiv.innerHTML = `<span style="color:#b00020;">${esc(err.message)}</span>`;
+      }
+    }
+
+    async function deleteObservation(observationId) {
+      if (!window.confirm(`Delete observation ${observationId}? This cannot be undone.`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/observations/${encodeURIComponent(observationId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.deleted_orphaned_objects > 0) {
+          selectedClusterId = null;
+          await loadClusters();
+          document.getElementById('selfClusterCol').innerHTML = '<h6 class="mb-2">Within Cluster</h6><div class="meta">Cluster was removed because it had no remaining observations.</div>';
+          document.getElementById('otherClusterCol').innerHTML = '<h6 class="mb-2">Other Clusters</h6><div class="meta">Select a cluster on the left.</div>';
+          document.getElementById('facesCol').innerHTML = '<h6 class="mb-2">Face Detections For This Cluster</h6><div class="meta">No cluster selected.</div>';
+          document.getElementById('resultTitle').textContent = 'Similar Clusters';
+          document.getElementById('resultMeta').textContent = 'Select a cluster on the left.';
+        } else if (selectedClusterId) {
+          await selectCluster(selectedClusterId);
+        }
+      } catch (err) {
+        alert(`Failed to delete observation: ${err.message}`);
+      }
+    }
+
+    window.selectCluster = selectCluster;
+    window.switchFaceScene = switchFaceScene;
+    window.compareTwoClusters = compareTwoClusters;
+    window.runRecluster = runRecluster;
+    window.runRecomputeEmbeddings = runRecomputeEmbeddings;
+    window.runRecomputeThenRecluster = runRecomputeThenRecluster;
+    window.deleteObservation = deleteObservation;
+    window.addEventListener('resize', drawFaceOverlay);
+    loadClusters();
+  </script>
+</body>
+</html>

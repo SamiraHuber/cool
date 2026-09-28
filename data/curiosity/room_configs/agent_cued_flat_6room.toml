@@ -1,0 +1,38 @@
+# agent_cued_flat_6room: the BIGGER adaptation of agent_cued_6room —
+# same levers pushed further (config-only): episodes 10-12/day, heading
+# cues on most departures, fully flat room priors (marginals carry almost
+# no information), stronger storage churn, kitchen damped, softer softmax.
+extends = "agent_cued_6room.toml"
+name = "agent_cued_flat_6room"
+seed = 46
+
+[output]
+dir = "data/curiosity/datasets/agent_cued_flat_6room"
+
+[episodes]
+per_day = [10, 12]
+
+[cues]
+p_heading = 0.7
+
+[cues.p_heading_by_source]
+episode = 0.85
+schedule = 0.75
+random = 0.55
+
+# Flat priors: every room equally attractive a priori.
+[decisions.base_affinity]
+home = 1.0
+office_other = 1.0
+kitchen = 1.0
+meeting = 1.0
+storage = 1.0
+utility = 1.0
+
+# Softer softmax -> background destinations spread more uniformly.
+[decisions]
+tau = 1.2
+
+[decisions.p_move.room_multipliers]
+storage = 2.0
+kitchen = 0.9

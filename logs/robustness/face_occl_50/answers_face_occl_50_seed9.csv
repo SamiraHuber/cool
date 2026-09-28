@@ -1,0 +1,599 @@
+id,question,category,expected,answer,error,n_function_calls,iterations,model,duration_s,building,mode,vlm,perturbation,severity,seed,perturbed_rows,queries_touched
+1,Who owns controller_01?,ownership,luisa,"I've confirmed that luisa is a tracked person. Based on all the evidence:
+
+1. The object ""controller_01"" (object_id: 9812416234) has been interacted with only by one person: luisa
+2. luisa has 4 total interactions with the object, including 3 ""holding"" interactions and 1 ""holding bottle"" interaction
+3. All interactions occurred on 2026-08-08
+
+Since only one person (luisa) has interacted with controller_01, and he performs ownership-relevant actions like ""holding"" multiple times, luisa is clearly the owner of controller_01.",,3,4,Qwen/Qwen3.5-9B,5.0,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+2,Who owns car_02?,ownership,anna,"Based on the interaction data, I can see:
+
+1. sven - ""riding as rear passenger"" (1 interaction)
+2. Unknown person - ""riding as front passenger"" (1 interaction)
+3. anna - ""driving the car"" (1 interaction)
+
+All three people interacted exactly once with car_02. The interactions happen on the same timestamp (2026-08-08 19:15:05), in the same room (office_2), and appear to be part of the same scene.
+
+Looking at the ownership criteria:
+- All 3 people have equal interaction counts (1 each)
+- Different action types: ""driving"" vs ""riding""
+- ""Driving"" is a more meaningful ownership-relevant action (anna was driving)
+- ""Riding"" suggests being a passenger
+
+According to the SHARED OBJECT RULE: ""An object is PUBLIC/SHARED with NO SINGLE PERSONAL OWNER only when 3 or more different people use it AND their usage is balanced""
+
+Here we have 3 people with balanced frequency (1 each), but the action types are different. anna was the driver, while the others were passengers. 
+
+However, the key consideration is: Is anna clearly the dominant or primary user? She has 1 interaction like the others. The balanced count (1 each) suggests no single person is clearly dominant in terms of frequency alone.
+
+But the action type matters - ""driving"" is a stronger ownership indicator than ""riding"". If anna is the only one who drove the car while others just rode as passengers, this could still indicate she is the owner.
+
+However, looking at the counts equally (1 each), and the rule saying ""If one person uses the object far more often than the others, or is the only one performing the meaningful ownership actions (e.g. 'using'/'holding' it while others merely pass 'next_to' it), that person IS the primary owner""
+
+anna performed ""driving"" which is more meaningful than ""riding"", but all have the same count. The question is whether the different action types combined with equal counts mean shared ownership or not.
+
+Given:
+- 3 people with exactly 1 interaction each (balanced)
+- anna ""drove"" while others ""ran as passengers""
+
+This looks like shared ownership - multiple people interacted with it in a meaningful way (some as driver, some as passengers), and the usage is balanced (1 each). It's not personal to any single individual.
+
+Actually, let me reconsider. The SHARED OBJECT rule says ""3 or more different people use it AND their usage is balanced — i.e. they each use it at a SIMILAR frequency (no single person is clearly dominant) AND they perform similar kinds of ownership-relevant actions""
+
+The key phrase is ""similar kinds of ownership-relevant actions"". Here we have:
+- anna: ""driving"" 
+- Others: ""riding""
+
+Are ""driving"" and ""riding"" similar kinds of ownership-relevant actions? They're both related to using the car, but they're different roles. However, they could still be considered similar in the context of car ownership (people using a car can be either driver or passenger).
+
+With 3 people, each with 1 interaction, and all performing car-related actions (just different roles), this would suggest shared ownership.
+
+But wait - let me think about this differently. The rule says ""similar kinds of ownership-relevant actions (e.g. 'using', 'holding', 'carrying')"". ""Driving"" and ""riding"" are both ways of ""using"" a car, so they could be considered similar.
+
+Given balanced counts (1 each) and all performing car-related actions, I'd say this indicates **shared ownership** with no single personal owner.
+
+Actually, I need to reconsider once more. Looking at the ownership inference rule:
+- ""personal ownership usually means one person is the dominant or most recent meaningful user/holder""
+- ""shared/public ownership means multiple different people use it at a SIMILAR frequency AND with similar ownership-relevant action types""
+
+Key factors:
+1. Frequency: 1 each = similar frequency ✓
+2. Action types: ""driving"" vs ""riding"" - these are both ways of using a car, could be considered similar in the context of car usage
+
+With all these factors pointing to balanced usage, I conclude this is **shared ownership**.
+
+Let me finalize my answer:
+
+**car_02 is shared (multiple people use it)** based on the interaction history showing 3 different people (sven, an unnamed person, and anna), each with exactly 1 interaction (balanced frequency), with anna driving and the others riding as passengers.
+</think>
+
+Based on the interaction history for car_02, I can see that **car_02 is shared among multiple people** with no single personal owner.
+
+The interaction data shows:
+- **sven**: 1 interaction (riding as rear passenger)
+- **Unnamed person**: 1 interaction (riding as front passenger)  
+- **anna**: 1 interaction (driving the car)
+
+All three people have exactly the same interaction count (1 each), which indicates balanced usage. anna was the driver while sven and the unnamed person were passengers, but they all engaged with the car in car-related activities.
+
+According to the shared ownership criteria, an object is considered **PUBLIC/SHARED** when 3 or more different people use it at a similar frequency. Here we have:
+- 3 different people
+- Equal interaction counts (1 each)
+- All performing car-related actions (driving/riding)
+
+Therefore, **car_02 is owned/shared by multiple people** (sven, anna, and at least one other person), with no single individual being clearly dominant as the sole owner.",,3,4,Qwen/Qwen3.5-9B,11.4,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+3,Who owns bed_fd?,ownership,luisa,"Looking at the interaction history for bed_fd (object_id 9812400055):
+
+There are 6 interactions from 5 people (luisa appears twice with different object_ids, likely different interactions or sessions):
+
+1. luisa (object_id 9812416364) - 3 interactions: ""leaning"" (1), ""looking"" (1), ""standing"" (1)
+2. luisa (object_id 9812421168) - 3 interactions: ""sitting"" (2), ""sitting on"" (1)
+3. Object 9812412304 - 2 interactions: ""observing"" (1), ""standing next to"" (1)
+4. peach - 2 interactions: ""standing next to"" (1), ""holding"" (1)
+5. Object 9812421347 - 1 interaction: ""standing next to"" (1)
+
+Wait, I see there's something confusing here. The results show ""luisa"" appears twice with different object_ids. This might be two different tracking sessions or entries. Let me combine these:
+- luisa total: 3 + 3 = 6 interactions
+- luisa sitting on/sitting: 2 + 1 = 3 times (sitting) + 1 (sitting on) = 3 times sitting-related
+- luisa leaning/looking/standing: 3 times
+
+peach: 2 interactions, but one is ""holding"" which is an ownership-relevant action, and the other is ""standing next to""
+
+Others: 2 and 1 interactions, all ""standing next to"" or ""observing"" which are not ownership-relevant.
+
+So luisa has 6 interactions, peach has 2, and the rest have very few (2 or 1). luisa is clearly the dominant user of bed_fd with 6 interactions, and importantly, luisa was ""sitting"" and ""sitting on"" the bed 3 times, which are meaningful ownership actions (actually using the bed).
+
+peach only has 2 interactions and only one is ""holding"" - much less than luisa's usage.
+
+Based on the note in the response and the dominance of luisa (6 interactions vs 2 for peach and 2 or 1 for others), and luisa performing meaningful ownership actions (sitting, sitting on), **luisa is the owner/primary user of bed_fd**.
+
+
+I've confirmed luisa as the primary user through interaction patterns. The data shows clear evidence of ownership with consistent usage and meaningful engagement with the bed.",,2,3,Qwen/Qwen3.5-9B,8.9,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+4,Who owns laptop_zk?,ownership,birgit,"Based on the interaction data, I can see that:
+
+- Only one person (birgit) has interacted with laptop_zk
+- birgit has 3 interactions with the laptop
+- The actions include: ""using"" (2 times) and ""holding"" (1 time)
+- birgit is located in ""office_2""
+
+Since birgit is the only person who has interacted with this laptop, and she's performing meaningful ownership-relevant actions (using and holding), she is clearly the owner of laptop_zk.
+
+The answer is: birgit owns laptop_zk.",,2,3,Qwen/Qwen3.5-9B,3.4,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+5,Who owns laptop-Nf?,ownership,sven,"Based on the interaction data, I can see that:
+
+1. There is only ONE person who has ever interacted with laptop-Nf: sven
+2. sven has 4 interactions with this laptop:
+   - 2 times ""using"" 
+   - 1 time ""sitting near""
+   - 1 time ""looking_at""
+
+Since only one person has interacted with this laptop at all, and that person (sven) is performing ownership-relevant actions like ""using"" the laptop, sven is clearly the owner of laptop-Nf.
+
+There's no ambiguity here - only one person has ever touched this laptop, and that's sven.
+
+Now I can answer the user's question.",,4,5,Qwen/Qwen3.5-9B,5.2,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+6,Who owns laptop_mm?,ownership,richard,"I now have the interaction data. The object laptop_mm (object_id 9812405008) has been interacted with by only one person: richard. richard has performed 2 interactions of type ""typing on"" this laptop, both within a very short time range (2026-08-08 16:59:22 to 16:59:23).
+
+Based on this data:
+- Only 1 person (richard) has interacted with laptop_mm
+- The interactions are specifically ""typing on"" which is a meaningful ownership-relevant action
+- Since there's only one person and they are performing the primary ownership action (typing/using), richard is clearly the owner of laptop_mm.
+
+The ownership inference rules state that personal ownership usually means one person is the dominant or most recent meaningful user/holder. In this case, richard is the only person who has used the laptop, making richard the clear owner.
+
+
+I can now provide a straightforward answer confirming richard as the sole owner of the laptop.
+</think>
+
+Based on the interaction history, **richard owns laptop_mm**.
+
+Here's what I found:
+- Only one person (richard) has interacted with laptop_mm
+- richard has performed 2 interactions of type ""typing on"" this laptop
+- Both interactions occurred within the same session on 2026-08-08
+
+Since richard is the only person who has used this laptop and has been performing meaningful ownership-relevant actions (typing on it), richard is clearly the owner of laptop_mm.",,3,4,Qwen/Qwen3.5-9B,5.2,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+7,Who owns laptop_mg?,ownership,sven,"The synthesize tool isn't available, but I have all the information needed to answer the question.
+
+sven owns laptop_mg.
+
+Based on the interaction history, only one person (sven) has ever interacted with this laptop. The interaction was ""sitting in front of"" the laptop in office_2 on 2026-08-08 at 18:58:04 local time. Since sven is the sole person who has interacted with this object, sven is the owner.",,5,6,Qwen/Qwen3.5-9B,7.1,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+8,Who owns laptop_uf?,ownership,luisa,"Based on the interaction history, I can see that luisa is the only person who has interacted with the laptop_uf. The interactions show:
+- 2 uses of ""using"" action
+- 1 ""sitting behind"" action
+- 1 ""holding"" action
+
+Since luisa is the sole person who has used this laptop with all types of ownership-relevant actions (using, holding), there's clear evidence that luisa owns the laptop_uf.
+
+This is NOT a shared/public object because only one person has interacted with it.
+
+My answer: luisa owns the laptop_uf.
+</think>
+
+Based on the interaction history for laptop_uf, I can see that **luisa** is the owner of this laptop.
+
+The evidence shows:
+- luisa is the **only person** who has interacted with laptop_uf
+- He has used it with ownership-relevant actions:
+  - **""using""** (2 times)
+  - **""holding""** (1 time)
+  - **""sitting behind""** (1 time)
+
+Since luisa is the sole user of this laptop and has performed multiple types of ownership-relevant interactions, there's clear evidence that luisa owns laptop_uf.",,3,4,Qwen/Qwen3.5-9B,5.8,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+9,Who owns laptop_ns?,ownership,peach,"I have all the information I need. Based on the interaction analysis:
+
+- laptop_ns is owned by peach
+- She has 3 interactions with this object
+- The interactions include 2 ""holding"" actions and 1 ""looking at"" action
+- She is the only person who has interacted with this laptop
+
+Whether it's a single person vs. multiple people, a single person can still be the owner. The question is whether peach is the owner, which based on the interaction history (3 interactions, all by her, including ""holding"" actions which are ownership-relevant), she appears to be the primary user/owner.
+
+So the answer is that peach owns laptop_ns.
+
+Wait, but I want to verify this more carefully. Let me check what the actual interaction actions are in more detail. The get_object_person_interactions showed actions like ""holding"" and ""looking at"". Let me see the actual events to confirm.
+
+But actually, I already have enough information. The result clearly shows:
+- Only peach has interacted with laptop_ns
+- She has 3 interactions including holding actions
+- This indicates she is the owner
+
+I can now answer the user's question based on this evidence.",,3,4,Qwen/Qwen3.5-9B,5.6,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+10,Who owns bowl_zz?,ownership,peach,"The results show that there is only one person who has interacted with bowl_zz: peach. peach has 2 interactions with this object (one ""eating"" action and one ""holding/eating"" action), and this is the only person who has interacted with it. This indicates that peach is the owner of bowl_zz.
+
+Let me provide the answer.",,2,3,Qwen/Qwen3.5-9B,3.4,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+11,Who owns bowl_ee?,ownership,peach,"Based on the interaction data, I can see that:
+
+1. bowl_ee (object_id: 9812407363) has only 1 interaction recorded
+2. The interaction was with peach (person_id: 9812421155)
+3. The action was ""stirring""
+4. The room was ""office_2""
+5. This is the only person who has interacted with bowl_ee
+
+Since peach is the only person who has interacted with bowl_ee and only performed a stirring action, peach appears to be the owner of bowl_ee. However, I should note that with only one recorded interaction, we have limited evidence. But based on the available data, peach is the person associated with bowl_ee.
+
+The interaction shows:
+- action: ""stirring"" 
+- caption: ""The woman holds a spoon over the blue bowl.""
+- co_participant: peach
+
+So peach is the person who owns/uses bowl_ee.
+</think>
+
+Based on the interaction history, **peach** owns bowl_ee. 
+
+The data shows:
+- bowl_ee has only 1 recorded interaction
+- That interaction was with peach, who was ""stirring"" with a spoon over the blue bowl
+- peach is the only person who has interacted with bowl_ee in the database
+
+Since peach is the sole user of this object, she is considered its owner.",,5,6,Qwen/Qwen3.5-9B,6.1,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+12,Who owns book_la?,ownership,richard,"I have the ownership information. The book ""book_la"" has been interacted with by only one person: richard, who performed a ""reading"" action. Since there's only one person with interaction history for this object, richard appears to be the owner of book_la.
+
+Let me provide the final answer.",,3,4,Qwen/Qwen3.5-9B,3.8,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+13,Who owns book_ls?,ownership,heinrich,"Great! There's one interaction event showing that heinrich used to interact with book_ls. The interaction shows:
+- Action: ""reading""
+- Caption: ""person holding and reading a book""
+- heinrich (person_id: 9812404536) was the participant
+- The interaction happened on 2026-08-08 in office_2
+
+Based on this interaction history, heinrich is the person who has interacted with book_ls. Since there's only one person who has interacted with this object (heinrich), heinrich would be considered the owner of book_ls.
+
+Let me provide the answer.
+
+The book_ls has been interacted with by one person: heinrich. Based on the interaction history where heinrich was ""holding and reading"" the book, heinrich is the owner of book_ls.",,5,6,Qwen/Qwen3.5-9B,5.2,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+14,Who owns book_ee?,ownership,sven,"The interaction data shows that ""sven"" is the only person who has interacted with book_ee (object_id 9812405830). The interaction count is 1, with the action being ""reading"". 
+
+According to the ownership rules: ownership is inferred from interaction history, where the dominant or most recent meaningful user of an object is typically the owner. Since sven is the only person who has interacted with this book and he used it for reading (a meaningful ownership-relevant action), he is the owner of book_ee.
+
+Let me provide the answer.",,2,3,Qwen/Qwen3.5-9B,4.8,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+15,Who owns bag_zh?,ownership,anna,"I can see that the object ""bag_zh"" (object_id: 9812414349) has interaction history showing:
+
+- Only 1 person has interacted with it: anna
+- anna has 2 interactions with this bag (both are relevant actions: ""carrying"" and ""holding"")
+- Both interactions happened at the same time (around 2026-08-08 18:43:35)
+- anna was carrying and holding the bag in office_2
+
+Since anna is the only person who has ever interacted with this bag (only 1 person out of person_count: 1), and she performed ownership-relevant actions like ""carrying"" and ""holding"", anna is clearly the owner of bag_zh.
+
+This is not a shared/shared/public object since there's only one person interacted with it. The conclusion is straight forward.
+
+
+I've confirmed anna as the sole owner with consistent bag interactions.
+</think>
+
+Based on the interaction history for bag_zh, I can see that **anna owns this bag**.
+
+The data shows:
+- Only one person has ever interacted with bag_zh: **anna**
+- anna has 2 interactions with this bag, including carrying and holding it
+- These interactions occurred in office_2
+
+Since anna is the only person who has ever interacted with this bag (person_count: 1), she is clearly the owner. This is personal ownership, not a shared object.",,3,4,Qwen/Qwen3.5-9B,5.5,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+16,Who owns food_ke?,ownership,sven,"I can see the interaction data. Looking at the interaction counts:
+
+- sven: 7 interactions (4 eating, 2 holding, 1 holds)
+- birgit: 4 interactions (3 eating, 1 holding)
+- anna: 3 interactions (2 eating, 1 holding)
+- richard: 2 interactions (2 eating)
+- Another person (object_id 9812423455): 1 interaction (1 eating)
+
+sven clearly has the highest interaction count (7) compared to the others. He also performs the most ""eating"" and ""holding"" actions, which are ownership-relevant actions. The note says that when one person has a clearly higher count, they should be named as the primary owner rather than calling it shared.
+
+sven's 7 interactions vs. birgit's 4, anna's 3, and richard's 2 shows sven is clearly the dominant user. This indicates sven is the primary owner of food_ke.
+
+Based on the ownership inference rules, since sven dominates in both frequency (7 vs 4 vs 3 vs 2 vs 1) and performs meaningful ownership actions (eating, holding), Hebrew is the primary owner.
+
+Actually, I should provide the answer now - sven owns food_ke.",,2,3,Qwen/Qwen3.5-9B,4.3,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+17,Who owns phone_mr?,ownership,heinrich,"I have the ownership information. According to the results:
+
+- Only 1 person (heinrich) has interacted with phone_mr
+- heinrich has 1 interaction with the phone, and the action was ""holding""
+- There's no other person who has used this phone
+
+This indicates heinrich is the owner of phone_mr, as he is the only person who has interacted with it.
+
+Based on the CRITICAL — Shared Object Rule, ownership is determined by:
+- Personal ownership when one person is the dominant or most recent meaningful user/holder
+- heinrich is the only person (1 vs 0 others), so this is clearly personal ownership
+
+I can now answer the question.
+</think>
+
+Based on the interaction history for **phone_mr** (object_id: 9812403640), I found that:
+
+- **heinrich** is the only person who has interacted with this phone
+- heinrich has 1 interaction with it, specifically using the action ""**holding**""
+- The interaction occurred in ""office_2"" on 2026-08-08 at 16:38:56
+
+Since heinrich is the sole person who has interacted with this phone, **heinrich owns phone_mr**. This qualifies as personal ownership because there is only one meaningful user of this object.",,3,4,Qwen/Qwen3.5-9B,4.9,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+18,Who owns phone_fds?,ownership,peach,"Perfect. I now have all the evidence I need. The interaction event shows that peach was holding phone_fds on 2026-08-08 in office_2.
+
+Based on:
+1. Only one person (peach) has interacted with phone_fds
+2. The interaction was ""holding"" which is an ownership-relevant action
+3. There's no other person who has used this phone
+
+I can confidently say that peach owns phone_fds.",,3,4,Qwen/Qwen3.5-9B,5.0,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+19,Who owns table_gd?,ownership,Shared,"Based on the interaction data, I can see that:
+
+1. There is only 1 person who has interacted with table_gd
+2. That person is heinrich
+3. heinrich has interacted with the table 3 times
+4. The action type is ""sitting at"" the table
+
+According to the ownership inference rules, this is clear - heinrich is the only person who has interacted with table_gd, and there's no evidence of shared ownership (only one person). heinrich appears to be the owner/primary user of table_gd.
+
+I have enough information to answer the question now.",,2,3,Qwen/Qwen3.5-9B,3.9,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+20,Who owns cup_sd?,ownership,sven,"Based on the interaction data, I can see that:
+
+1. cup_sd (object_id: 9812415985) has only 1 interaction recorded
+2. The person involved is sven (object_id: 9812401761)
+3. The action was ""sitting near"" - not ""using"" or ""holding""
+
+This is a bit tricky because sven is only ""sitting near"" the cup, not actively using it. However, this is the only person who has interacted with this cup at all. According to the ownership inference rules:
+
+- Personal ownership usually means one person is the dominant or most recent meaningful user/holder
+- Shared/public ownership means multiple different people use it at a similar frequency
+
+Since sven is the only person who has interacted with cup_sd (only 1 interaction with ""sitting near""), and there are no other people who have interacted with it, sven would be considered the owner by default, even though it's a passive interaction type (""sitting near"").
+
+The observation count for the cup was only 2, and there's only 1 interaction recorded. Let me provide the answer based on this evidence.
+
+Actually, I should note that the action is ""sitting near"" rather than a more active interaction like ""using"" or ""holding"". However, since sven is the only person who has ever interacted with this object, he would still be considered the owner (or at least the only associated person) by default.
+
+Let me provide the final answer.
+</think>
+
+Based on the interaction history I found, **sven** is associated with cup_sd. 
+
+Here's what I found:
+- The object ""cup_sd"" (object_id: 9812415985) has only **1 interaction recorded**
+- sven (object_id: 9812401761) was observed **""sitting near""** this cup on 2026-08-08 at 19:04 in the office_2 room
+- This was the only person who ever interacted with cup_sd
+
+Since sven is the only person who has ever interacted with this cup, he is considered the owner by default, even though the interaction type was ""sitting near"" rather than an active interaction like ""using"" or ""holding"". The cup only has 2 total observations in the system.",,4,5,Qwen/Qwen3.5-9B,6.9,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+21,Who owns cup_dsf?,ownership,luisa,"I found the interaction data for cup_dsf. There's only 1 interaction recorded, where luisa ""reached for"" the cup. Since this is the only person who has ever interacted with this cup (and it's a single interaction), luisa appears to be the owner/sole user of this cup.
+
+Let me provide the answer.
+</think>
+
+Based on the interaction history for **cup_dsf**, I can see there is only **one interaction** recorded:
+
+- **luisa** performed a ""reaching for"" action on cup_dsf in office_2
+
+Since luisa is the only person who has interacted with this cup, and there's no evidence of other users, **luisa is the owner of cup_dsf**.",,4,5,Qwen/Qwen3.5-9B,5.2,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+22,Who owns table_er?,ownership,Shared,"Based on the interaction data, I can see:
+
+1. The object ""table_er"" (object_id: 9812416427) has 3 interactions total
+2. All interactions are of type ""sitting"" 
+3. Three different people have sat next to the table:
+   - anna (object_id: 9812421159) - 1 interaction
+   - An unknown person (no name, object_id: 9812421165) - 1 interaction
+   - sven (object_id: 9812421162) - 1 interaction
+
+Each person has sat next to the table exactly once (1 interaction each). The action is ""sitting"" which means they are sitting next to the table, not ""using"" it in a possessive sense.
+
+Based on the ownership criteria from the guidelines:
+- Shared/public ownership means multiple different people use it at a similar frequency AND with similar ownership-relevant action types
+- A person who only stands 'next_to' or sits 'next_to' an object is not an owner, even if counted often
+
+In this case:
+- Three different people have interacted with the table
+- Each has a similar frequency (1 interaction each)
+- All interactions are of the same type (""sitting"")
+- The action is ""sitting next to"" the table, not ""using"", ""holding"", or ""carrying""
+
+Given these observations, the table appears to be SHARED/PUBLIC - there is no single dominant owner. All three people (anna, a person with no tracked name, and sven) have equally participated by sitting next to the table.
+
+However, I should note that since the action is ""sitting"" (not ""using"", ""holding"", etc.) and the people just sat next to it, this might indicate the table is a shared/common object rather than owned by anyone.
+
+
+The table is a shared, public object with no single owner. All three individuals interacted equally by sitting beside it, suggesting it's a common resource in that space.",,3,4,Qwen/Qwen3.5-9B,5.4,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+23,Who owns table_sd?,ownership,heinrich,"Now I have the interaction data. Let me analyze who owns table_sd based on the interaction history:
+
+1. **sven**: 5 interactions with actions:
+   - sitting at (2 times)
+   - observing (1 time)
+   - looking_at (1 time)
+   - leaning on (1 time)
+
+2. **heinrich**: 4 interactions with actions:
+   - working_on (1 time)
+   - looking at (1 time)
+   - working at (1 time)
+   - working on (1 time)
+
+3. **Unnamed person (null name)**: 1 interaction with action:
+   - working (1 time)
+
+Based on the ownership rules, I need to consider both the frequency and the type of actions. sven has the highest interaction count (5) which is a clear majority. heinrich has 4 interactions, but both are using meaningful interaction types (sitting at, leaning on, working). The third person only has 1 interaction.
+
+According to the rules:
+- Personal ownership usually means one person is the dominant or most recent meaningful user/holder
+- Shared/public ownership means multiple different people use it at SIMILAR frequency AND with similar ownership-relevant action types
+
+sven has 5 interactions vs heinrich's 4 - that's a clear difference, but they're relatively close. However, sven's interactions include ""sitting at"" (which is a strong ownership-relevant action) and has the highest count. heinrich also has ""working on"" and ""working at"" which are meaningful actions.
+
+The third person only has 1 interaction, so they're not a significant factor.
+
+Given that sven has the most interactions (5 vs 4) and multiple meaningful ownership-related actions (sitting at, leaning on), sven appears to be the primary owner. heinrich also has significant interactions but slightly less frequent.
+
+Actually, looking more carefully:
+
+
+The interactions suggest both sven and heinrich regularly use the table. Their interaction types are quite similar - both engage in sitting at, working on, and working at actions. This pattern indicates shared usage rather than sole ownership. The slight difference in frequency (5 vs 4) doesn't strongly point to one owner over the other.
+
+I'll classify table_sd as shared/public since both primary users interact meaningfully and frequently with the table.
+
+In professional contexts, tables typically belong to the team or office space rather than a single individual. The evidence of multiple users working at and interacting with the table supports this conclusion.
+
+sven and heinrich are the primary table users, with sven showing the most usage. Given the collaborative nature of their interactions, the table functions as a shared workspace rather than personal property. For the most accurate answer, I should note that ownership appears to be shared between sven and heinrich in the office context.
+</think>
+
+Based on the interaction history for table_sd, I can see the following:
+
+**Interactions with table_sd:**
+1. **sven**: 5 interactions - actions include ""sitting at"" (2x), ""observing"" (1x), ""looking_at"" (1x), ""leaning on"" (1x)
+2. **heinrich**: 4 interactions - actions include ""working_on"" (1x), ""looking at"" (1x), ""working at"" (1x), ""working on"" (1x)
+3. **Unknown person**: 1 interaction - action ""working"" (1x)
+
+**Ownership Analysis:**
+
+sven has the highest interaction count (5) and multiple ownership-relevant actions like ""sitting at"" and ""leaning on"". heinrich is also a significant user with 4 interactions involving ""working at"" and ""working on"" actions.
+
+Given that:
+- sven has the most frequent interactions (5 vs 4)
+- sven's actions include both ""sitting at"" and ""leaning on"" which are strong personal usage indicators
+- The usage difference is consistent (sven is slightly more frequent)
+
+**Answer:** **sven** appears to be the primary owner of table_sd, based on having the most interactions and performing ownership-relevant actions (sitting at, leaning on) more frequently than others. heinrich is also a regular user but with slightly less frequency.",,5,6,Qwen/Qwen3.5-9B,10.8,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+24,Who owns glass_kr?,ownership,richard,"Based on the interaction data, I can see that:
+
+1. There is only 1 interaction with this wine glass (glass_kr)
+2. The interaction shows that ""richard"" was ""holding"" this wine glass
+3. There is only 1 co-participant: richard
+
+Since there's only one person who has interacted with this glass (and they're holding it), richard appears to be the owner/end-user of this glass. With only one interaction and no other people, richard is clearly the person associated with this object.
+
+The evidence shows:
+- glass_kr is a wine glass
+- Only 1 interaction recorded
+- richard was holding it
+- No other people have interacted with it
+
+Based on the ownership inference rules, when only one person has interacted with an object, that person is the owner.
+
+I don't need any additional tool calls - the interaction history clearly shows richard is the only person who has been holding this glass.
+</think>
+
+Based on the interaction history for glass_kr (a wine glass), I can see that **richard** is the owner. 
+
+The data shows:
+- Only 1 interaction recorded for this glass
+- richard was the sole co-participant who was ""holding"" the glass
+- No other people have ever interacted with this object
+
+Since there's only one person associated with this object and they've been performing a meaningful interaction (holding), richard is clearly the owner of glass_kr.",,3,4,Qwen/Qwen3.5-9B,4.9,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+25,Who owns cup_as?,ownership,anna,"Based on the interaction data, I can see that:
+
+1. There's only 1 person who has interacted with cup_as (object_id 9812413463)
+2. That person is anna
+3. anna has 1 interaction with the cup, and the action was ""holding""
+
+According to the ownership inference rules: ""personal ownership usually means one person is the dominant or most recent meaningful user/holder.""
+
+Since anna is the only person who has interacted with this cup and she held it, she is clearly the owner of cup_as.
+
+Also, noting that anna has a single ""holding"" action, which is ownership-relevant behavior.
+
+Based on the data, anna owns cup_as.",,2,3,Qwen/Qwen3.5-9B,3.7,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+26,Who owns cup_asdd?,ownership,heinrich,"Based on the interaction history, I can see that:
+
+- Only one person (heinrich) has interacted with ""cup_asdd""
+- heinrich has 2 interactions with this cup
+- The actions heinrich performed were ""looking"" (1 time) and ""holding"" (1 time)
+
+Since heinrich is the only person who has interacted with this cup, and he performed an ownership-relevant action (holding it), heinrich is the owner of cup_asdd.
+
+I have enough information to answer the question now. Let me provide the answer.",,2,3,Qwen/Qwen3.5-9B,3.4,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+27,Who owns table_dsf?,ownership,Shared,"Interesting - get_object_last_location returned found: false. Let me try get_object_first_location or get_object_observations to find coordinates.
+
+Actually, for answering the ownership question, I already have the data I need. The ownership question is about who owns the table, not about navigating to it. Let me provide the answer based on the interaction data I already have.
+
+Looking at the interaction data:
+- luisa has 2 interactions (included in interaction_count: 2 system entry)
+- The unnamed person has 1 interaction  
+- luisa also has another entry with 1 interaction
+
+Total for luisa: 3 interactions with 2 or more ""holding"" actions total
+Other person: 1 interaction with ""standing near"" (passive)
+
+luisa is clearly the dominant user with meaningful ""holding"" actions, making him the owner.
+
+I'll provide the answer without needing to navigate.
+</think>
+
+Based on the interaction history for **table_dsf** (object_id: 9812407386), **luisa** owns the table.
+
+Here's the evidence:
+- luisa has **3 total interactions** with the table (2 interactions from one entry plus 1 from another), including **multiple instances of ""holding""** the table
+- The other person only has 1 passive interaction of ""standing near""
+
+luisa is the dominant and meaningful user of table_dsf, performing ownership-relevant actions like ""holding,"" which indicates he is the owner.",,4,5,Qwen/Qwen3.5-9B,7.6,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+28,Who owns cup_ng?,ownership,Shared,"Now I have detailed interaction data for cup_ng. Let me analyze this to determine ownership:
+
+From the results, I can see that cup_ng (object_id: 9812406857) has interactions with 3 people:
+
+1. **sven** (object_id: 9812401761):
+   - Interaction count: 7 interactions
+   - Actions: 5 ""holding"" and 2 ""eating""
+   - This person has the most interactions and performs ownership-relevant actions (holding, eating)
+
+2. **Unknown person** (object_id: 9812421175):
+   - Interaction count: 2 interactions
+   - Actions: 2 ""looking at""
+   - This person only looks at the cup, doesn't interact with it meaningfully
+
+3. **Unknown person** (object_id: 9812421181):
+   - Interaction count: 1 interaction
+   - Actions: 1 ""looking at""
+   - This person also only looks at the cup
+
+To determine ownership, I need to check:
+- How many people use it
+- Who performs ownership-relevant actions (using, holding, etc.)
+- Frequency of interactions
+
+Based on the data:
+- sven has 7 interactions with 5 ""holding"" and 2 ""eating"" actions
+- The other two people only ""look at"" the cup (passive interaction)
+
+Since sven is clearly the dominant user who performs meaningful ownership actions (holding and eating - which are ownership-relevant actions typically associated with personal items like a cup), sven appears to be the owner of cup_ng.
+
+The name search rules suggest ""sven"" might need special handling, but in this case the object_id 9812401761 clearly corresponds to the person name ""sven"".
+
+Based on the possessive query rules and the interaction analysis, sven is the owner of cup_ng as he has the most meaningful interactions (holding and eating) with significantly more frequency than the others.",,8,9,Qwen/Qwen3.5-9B,9.0,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+29,Who owns bowl_nn?,ownership,luisa,"I can see the interaction data clearly shows that luisa is the only person who has interacted with bowl_nn. The results show:
+
+- person_count: 1
+- interaction_count: 2
+- Only one person: luisa, with 2 interactions
+- Both interactions are of type ""holding""
+
+According to the ownership rules, luisa is clearly the owner since:
+1. Only one person has interacted with this object
+2. luisa has performed the meaningful ownership actions (holding) on both interactions
+
+This is a clear case of personal ownership - luisa is the sole user/owner of bowl_nn.
+
+I can now answer the question without additional tool calls.
+</think>
+
+Based on the interaction history, **luisa** owns bowl_nn.
+
+The interaction data shows that only one person (luisa) has interacted with this object, with 2 interactions total, both of which are ""holding"" actions. According to the ownership inference rules, when a single person is the sole and dominant user of an object with meaningful ownership-relevant actions (holding), they are the owner.",,3,4,Qwen/Qwen3.5-9B,4.8,dataset,chat,dgx_9b,face_occl,50%,9,0,0
+30,Who owns bottle_er?,ownership,luisa,"Let me just provide the answer directly based on the tool results I have.
+
+Based on the get_object_person_interactions results:
+
+- object_id: 9812407418 (bottle_er)
+- Found 1 person interaction
+- luisa is the only person who has interacted with this object
+- The interaction type is ""holding"" with count 1
+- The interaction occurred on 2026-08-08 17:31:38
+
+Since luisa is the only person who has ever interacted with bottle_er, and performed a meaningful ownership-relevant action (""holding""), luisa is the owner of bottle_er.
+
+Let me provide the final answer.
+</think>
+
+Based on the object interaction history, **luisa** owns bottle_er.
+
+Here's the evidence:
+- The interaction history shows only 1 person has ever interacted with bottle_er (object_id: 9812407418)
+- That person is luisa
+- luisa performed a ""holding"" action with this object once
+- Since luisa is the sole user of this object and performed a meaningful ownership-relevant action (""holding""), he is considered the owner
+
+This indicates personal ownership by luisa, as he is the dominant and only user of this bottle.",,4,5,Qwen/Qwen3.5-9B,6.0,dataset,chat,dgx_9b,face_occl,50%,9,0,0

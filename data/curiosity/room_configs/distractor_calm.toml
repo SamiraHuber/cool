@@ -1,0 +1,79 @@
+# distractor_calm: distractor world with GENERALLY LESS ACTIVITY.
+# Hypothesis: the agent does better when fewer changes compete for attention.
+# vs. distractor.toml: p_move ~halved, distractor churn 4.0 -> 1.5,
+# time-of-day peaks toned down, schedule thinned (fewer/smaller events).
+extends = "distractor.toml"
+name = "distractor_calm"
+
+[output]
+dir = "data/curiosity/datasets/distractor_calm"
+
+# globally lower mobility (~35% of base)
+[decisions.p_move.base]
+office = 0.22
+social = 0.35
+meeting = 0.28
+utility = 0.20
+
+# distractor rooms still the busiest, but much less churn than 4.0x
+[decisions.p_move.room_multipliers]
+kitchen = 1.2
+"meeting room" = 1.2
+
+# fewer carried/spawned items too (less object churn on top of people churn)
+personal_carry_p = 0.6
+
+# flatter day: weaker lunch / end-of-day peaks
+[[decisions.time_multipliers]]
+window = ["12:00", "12:30"]
+factor = 1.3
+[[decisions.time_multipliers]]
+window = ["13:30", "14:00"]
+factor = 1.2
+[[decisions.time_multipliers]]
+window = ["09:00", "09:30"]
+factor = 0.7
+
+# thinned schedule: 2 events/day instead of 3, smaller groups (list replaces)
+[[schedule]]
+day_index = 0
+start = "09:05"
+end = "09:15"
+room = "meeting room"
+people_sample = 5
+description = "morning stand-up"
+[[schedule]]
+day_index = 0
+start = "12:00"
+end = "12:30"
+room = "kitchen"
+people_sample = 3
+description = "lunch"
+[[schedule]]
+day_index = 1
+start = "09:05"
+end = "09:15"
+room = "meeting room"
+people_sample = 6
+description = "all-hands demo"
+[[schedule]]
+day_index = 1
+start = "12:00"
+end = "12:45"
+room = "kitchen"
+people_sample = 4
+description = "team lunch"
+[[schedule]]
+day_index = 2
+start = "09:05"
+end = "09:10"
+room = "meeting room"
+people_sample = 4
+description = "daily sync"
+[[schedule]]
+day_index = 2
+start = "12:00"
+end = "12:20"
+room = "kitchen"
+people_sample = 2
+description = "quick lunch"

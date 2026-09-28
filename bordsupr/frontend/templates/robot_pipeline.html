@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robot Pipeline Simulator</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 380px 1fr; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 14px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .kv { display: grid; grid-template-columns: 160px 1fr; gap: 8px; margin-bottom: 8px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #f6f8fb; border: 1px solid #e1e7ef; border-radius: 10px; padding: 12px; }
+    .trace-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .trace-table th { background: #f6f8fb; padding: 8px; text-align: left; border-bottom: 1px solid #d8dee8; position: sticky; top: 0; }
+    .trace-table td { padding: 8px; border-bottom: 1px solid #eef1f5; }
+    .trace-table tr:hover { background: #f9fafc; }
+    .badge-step { font-size: 11px; padding: 2px 8px; border-radius: 12px; }
+    .badge-stay { background: #e8f5e9; color: #2e7d32; }
+    .badge-move { background: #fff3e0; color: #ef6c00; }
+    .badge-changed { background: #ffebee; color: #c62828; }
+    .badge-unchanged { background: #eceff1; color: #546e7a; }
+    .status-running { color: #2e7d32; }
+    .status-stopped { color: #757575; }
+    .status-error { color: #c62828; }
+    .latest-decision { background: #fbfcff; border: 1px solid #d8dee8; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .scroll-box { max-height: 400px; overflow-y: auto; }
+    @media (max-width: 960px) { .workspace { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <!-- Left panel: Controls -->
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Pipeline Controls</h5>
+        <div class="muted">Configure the simulation run.</div>
+      </div>
+      <div class="panel-body">
+        <label for="frameDirInput" class="form-label">Frames directory</label>
+        <input id="frameDirInput" class="form-control" type="text" value="{{ video_publisher_default_frame_dir }}" />
+        <div class="muted mt-1">Host path. Will be translated to container path automatically.</div>
+
+        <label for="strideInput" class="form-label mt-3">Publish every Nth frame</label>
+        <input id="strideInput" class="form-control" type="number" min="1" max="100" value="5" />
+
+        <label for="hzInput" class="form-label mt-3">Publish rate (Hz)</label>
+        <input id="hzInput" class="form-control" type="number" min="0.1" max="30" step="0.1" value="1.0" />
+
+        <label for="roomsInput" class="form-label mt-3">Rooms (comma-separated)</label>
+        <input id="roomsInput" class="form-control" type="text" value="kitchen, storage, office 1, office 2, office 3, meeting room" />
+
+        <label for="framesPerRoomInput" class="form-label mt-3">Frames per room</label>
+        <input id="framesPerRoomInput" class="form-control" type="number" min="1" max="1000" value="5" />
+
+        <label for="pollIntervalInput" class="form-label mt-3">Poll interval (seconds)</label>
+        <input id="pollIntervalInput" class="form-control" type="number" min="1" max="300" value="5" />
+
+        <div class="form-check mt-3">
+          <input id="pauseOnStayInput" class="form-check-input" type="checkbox" checked />
+          <label class="form-check-label" for="pauseOnStayInput">
+            Pause round-robin on "stay"
+            <span class="muted">(default: only advance room on "move")</span>
+          </label>
+        </div>
+
+        <div class="form-check mt-3">
+          <input id="generateCaptionsInput" class="form-check-input" type="checkbox" checked />
+          <label class="form-check-label" for="generateCaptionsInput">Generate scene captions (VLM)</label>
+        </div>
+
+        <div class="d-grid gap-2 mt-4">
+          <button class="btn btn-primary" id="startBtn" onclick="startRun()">Start Run</button>
+          <button class="btn btn-outline-danger" id="stopBtn" onclick="stopRun()" disabled>Stop Run</button>
+          <button class="btn btn-outline-secondary" onclick="refreshStatus()">Refresh Status</button>
+        </div>
+
+        <hr>
+        <div id="statusBlock" class="muted">No run active.</div>
+      </div>
+    </section>
+
+    <!-- Right panel: Live view -->
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Live Results</h5>
+        <div class="muted">Real-time decisions and scene analysis.</div>
+      </div>
+      <div class="panel-body">
+        <!-- Status card -->
+        <div id="statusCard" class="mb-3">
+          <span class="text-muted">Waiting for run to start...</span>
+        </div>
+
+        <!-- Live Activity Log -->
+        <div class="mb-2"><strong>Live Activity Log</strong> <span class="muted">(real-time events)</span></div>
+        <div id="activityLog" class="mono mb-3" style="max-height: 240px; overflow-y: auto; font-size: 11px; padding: 10px;">
+          <div class="text-muted">Waiting for run to start...</div>
+        </div>
+
+        <!-- Latest decision -->
+        <div id="latestDecision" class="latest-decision" style="display:none;">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>Latest Decision</strong>
+            <span id="latestStepBadge" class="badge bg-secondary">Step #0</span>
+          </div>
+          <div class="kv"><div>Room</div><div id="latestRoom">—</div></div>
+          <div class="kv"><div>Action</div><div id="latestAction">—</div></div>
+          <div class="kv"><div>Target</div><div id="latestTarget">—</div></div>
+          <div class="kv"><div>Scene Changed</div><div id="latestSceneChanged">—</div></div>
+          <div class="kv"><div>Change</div><div id="latestSeverity">—</div></div>
+          <div class="kv"><div>Reasoning</div><div id="latestReasoning" class="text-muted">—</div></div>
+          <div id="latestToolCalls" class="mt-2"></div>
+          <div class="kv"><div>Scene Caption</div><div id="latestCaption" class="text-muted" style="font-size:11px;">—</div></div>
+          <div class="kv"><div>VLM Raw</div><div id="latestRaw" class="text-muted" style="font-size:10px; max-height:80px; overflow-y:auto;">—</div></div>
+        </div>
+
+        <!-- Decision trace -->
+        <div class="mb-2"><strong>Decision Trace</strong></div>
+        <div class="scroll-box">
+          <table class="trace-table">
+            <thead>
+              <tr>
+                <th>Step</th>
+                <th>Room</th>
+                <th>Caption</th>
+                <th>Changed</th>
+                <th>Change</th>
+                <th>Action</th>
+                <th>Target</th>
+                <th>Tools</th>
+                <th>Reasoning</th>
+              </tr>
+            </thead>
+            <tbody id="traceBody">
+              <tr><td colspan="9" class="text-muted text-center">No steps yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    let es = null;
+    let stepCount = 0;
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    }
+
+    function updateStatusCard(status) {
+      const statusClass = status.status === 'running' ? 'status-running' :
+                          status.status === 'error' ? 'status-error' : 'status-stopped';
+      document.getElementById('statusCard').innerHTML = `
+        <div class="kv"><div>Run ID</div><div><code>${escapeHtml(status.run_id || '-')}</code></div></div>
+        <div class="kv"><div>Status</div><div class="${statusClass} fw-semibold">${escapeHtml(status.status)}</div></div>
+        <div class="kv"><div>Current Room</div><div>${escapeHtml(status.current_room || '-')}</div></div>
+        <div class="kv"><div>Step</div><div>${status.step_number || 0}</div></div>
+        <div class="kv"><div>Frames</div><div>${status.processed_frames || 0} / ${status.total_frames || 0}</div></div>
+      `;
+    }
+
+    function updateLatestDecision(step) {
+      const d = step.decision || {};
+      document.getElementById('latestDecision').style.display = 'block';
+      document.getElementById('latestStepBadge').textContent = `Step #${step.step_number}`;
+      document.getElementById('latestRoom').textContent = escapeHtml(step.room);
+      document.getElementById('latestAction').innerHTML = `
+        <span class="badge-step ${d.action === 'move' ? 'badge-move' : 'badge-stay'}">${escapeHtml(d.action || '—')}</span>`;
+      document.getElementById('latestTarget').textContent = escapeHtml(d.target_room || '—');
+      document.getElementById('latestSceneChanged').innerHTML = `
+        <span class="badge-step ${d.scene_changed ? 'badge-changed' : 'badge-unchanged'}">
+          ${d.scene_changed ? 'Yes' : 'No'}
+        </span>`;
+      document.getElementById('latestSeverity').textContent = escapeHtml(d.change_severity || '—');
+      document.getElementById('latestReasoning').textContent = escapeHtml(d.reasoning || '—');
+      document.getElementById('latestCaption').textContent = escapeHtml(step.caption || '—');
+      document.getElementById('latestRaw').textContent = escapeHtml(d.raw_response || '—');
+
+      const toolCalls = d.tool_calls || [];
+      if (toolCalls.length > 0) {
+        document.getElementById('latestToolCalls').innerHTML = `
+          <span class="badge bg-light text-dark border">🔧 ${toolCalls.length} tool call(s)</span>
+          <div class="mono mt-1" style="font-size:10px; max-height:100px; overflow-y:auto;">
+            ${escapeHtml(JSON.stringify(toolCalls, null, 2))}
+          </div>
+        `;
+      } else {
+        document.getElementById('latestToolCalls').innerHTML = '';
+      }
+    }
+
+    function appendTraceRow(step) {
+      const tbody = document.getElementById('traceBody');
+      if (stepCount === 0) {
+        tbody.innerHTML = '';
+      }
+      stepCount++;
+      const d = step.decision || {};
+      const toolCount = (d.tool_calls || []).length;
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${step.step_number}</td>
+        <td>${escapeHtml(step.room)}</td>
+        <td class="text-muted" title="${escapeHtml(step.caption || '')}">
+          ${escapeHtml((step.caption || '').substring(0, 40))}${(step.caption || '').length > 40 ? '…' : ''}
+        </td>
+        <td>
+          <span class="badge-step ${d.scene_changed ? 'badge-changed' : 'badge-unchanged'}">
+            ${d.scene_changed ? 'Yes' : 'No'}
+          </span>
+        </td>
+        <td>${escapeHtml(d.change_severity || '—')}</td>
+        <td>
+          <span class="badge-step ${d.action === 'move' ? 'badge-move' : 'badge-stay'}">
+            ${escapeHtml(d.action || '—')}
+          </span>
+        </td>
+        <td>${escapeHtml(d.target_room || '—')}</td>
+        <td>${toolCount > 0 ? `🔧 ${toolCount}` : '—'}</td>
+        <td class="text-muted" title="${escapeHtml(d.reasoning || '')}">
+          ${escapeHtml((d.reasoning || '').substring(0, 60))}${(d.reasoning || '').length > 60 ? '…' : ''}
+        </td>
+      `;
+      tbody.appendChild(row);
+      row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function appendActivityLine(html) {
+      const log = document.getElementById('activityLog');
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function clearActivityLog() {
+      document.getElementById('activityLog').innerHTML = '';
+    }
+
+    async function startRun() {
+      const payload = {
+        frame_dir: document.getElementById('frameDirInput').value.trim(),
+        rooms: document.getElementById('roomsInput').value.trim(),
+        frames_per_room: Number(document.getElementById('framesPerRoomInput').value || 5),
+        poll_interval_seconds: Number(document.getElementById('pollIntervalInput').value || 5),
+        pause_on_stay: document.getElementById('pauseOnStayInput').checked,
+        stride: Number(document.getElementById('strideInput').value || 5),
+        hz: Number(document.getElementById('hzInput').value || 1.0),
+        generate_captions: document.getElementById('generateCaptionsInput').checked,
+      };
+
+      document.getElementById('statusBlock').textContent = 'Starting...';
+      clearActivityLog();
+      try {
+        const result = await fetchJson('/api/robot-pipeline/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        document.getElementById('statusBlock').innerHTML = `Run started: <code>${escapeHtml(result.run_id)}</code>`;
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        stepCount = 0;
+        document.getElementById('traceBody').innerHTML = '<tr><td colspan="9" class="text-muted text-center">Waiting for first step...</td></tr>';
+        connectStream();
+      } catch (err) {
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function stopRun() {
+      document.getElementById('statusBlock').textContent = 'Stopping...';
+      try {
+        await fetchJson('/api/robot-pipeline/stop', { method: 'POST' });
+        document.getElementById('statusBlock').textContent = 'Run stopped.';
+      } catch (err) {
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      if (es) { es.close(); es = null; }
+    }
+
+    async function refreshStatus() {
+      try {
+        const status = await fetchJson('/api/robot-pipeline/status');
+        updateStatusCard(status);
+        if (status.status === 'running') {
+          document.getElementById('startBtn').disabled = true;
+          document.getElementById('stopBtn').disabled = false;
+        } else {
+          document.getElementById('startBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+        }
+      } catch (err) {
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    function connectStream() {
+      if (es) { es.close(); }
+      es = new EventSource('/api/robot-pipeline/stream');
+
+      es.addEventListener('started', (e) => {
+        const data = JSON.parse(e.data);
+        appendActivityLine(`<span class="text-success">▶ Run started: <strong>${escapeHtml(data.run_id)}</strong> — ${data.room_list.length} rooms, ${data.total_frames} frames</span>`);
+      });
+
+      es.addEventListener('scene', (e) => {
+        const data = JSON.parse(e.data);
+        const cap = (data.caption || '').substring(0, 60);
+        appendActivityLine(`📷 Scene #${data.scene_id} discovered — "${escapeHtml(cap)}${cap.length > 60 ? '…' : ''}"`);
+      });
+
+      es.addEventListener('heartbeat', (e) => {
+        const data = JSON.parse(e.data);
+        appendActivityLine(`⏳ Polling… ${data.processed_frames} frame(s) processed, current room: ${escapeHtml(data.current_room || '-')}`);
+      });
+
+      es.addEventListener('step', (e) => {
+        const data = JSON.parse(e.data);
+        appendActivityLine(`✅ Step ${data.step_number} — Room: <strong>${escapeHtml(data.room)}</strong> — Action: <strong>${escapeHtml(data.decision?.action || 'stay')}</strong>`);
+        updateStatusCard({
+          run_id: data.run_id,
+          status: 'running',
+          current_room: data.room,
+          step_number: data.step_number,
+          total_frames: 0,
+          processed_frames: data.step_number,
+        });
+        updateLatestDecision(data);
+        appendTraceRow(data);
+      });
+
+      es.addEventListener('error', (e) => {
+        const data = JSON.parse(e.data);
+        appendActivityLine(`<span class="text-danger">❌ Error: ${escapeHtml(data.error || 'Unknown')}</span>`);
+        document.getElementById('statusBlock').innerHTML = `<span class="text-danger">Error: ${escapeHtml(data.error || 'Unknown')}</span>`;
+      });
+
+      es.addEventListener('done', (e) => {
+        const data = JSON.parse(e.data);
+        appendActivityLine(`<span class="text-muted">⏹ Run finished — status: ${escapeHtml(data.status)}</span>`);
+        es.close();
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+        refreshStatus();
+      });
+
+      es.onerror = () => {
+        es.close();
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+      };
+    }
+
+    refreshStatus();
+  </script>
+</body>
+</html>

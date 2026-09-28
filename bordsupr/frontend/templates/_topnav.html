@@ -1,0 +1,107 @@
+<nav class="navbar navbar-light bg-light border-bottom shadow-sm">
+  <div class="container-fluid py-2">
+    <a class="navbar-brand fw-semibold me-4" href="/?tab=scenes">Bordsupr</a>
+    <div class="d-flex flex-wrap align-items-center gap-2 flex-grow-1">
+      <a class="nav-link px-2 py-1 {% if active_page == 'scenes' %}active{% endif %}" id="tab-scenes" href="/?tab=scenes" onclick="if (window.showTab) { showTab('scenes'); return false; }">Scenes</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'objects' %}active{% endif %}" id="tab-objects" href="/?tab=objects" onclick="if (window.showTab) { showTab('objects'); return false; }">Objects</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'persons' %}active{% endif %}" id="tab-persons" href="/?tab=persons" onclick="if (window.showTab) { showTab('persons'); return false; }">Persons</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'interactions' %}active{% endif %}" id="tab-interactions" href="/?tab=interactions" onclick="if (window.showTab) { showTab('interactions'); return false; }">Interactions</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'map' %}active{% endif %}" id="tab-map" href="/?tab=map" onclick="if (window.showTab) { showTab('map'); return false; }">Map</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'robot_view' %}active{% endif %}" id="tab-robot-view" href="/?tab=robot_view" onclick="if (window.showTab) { showTab('robot_view'); return false; }">Robot View</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'slam' %}active{% endif %}" href="/slam">SLAM</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'clusters' %}active{% endif %}" href="/clusters">Cluster Similarity</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'cluster_testsets' %}active{% endif %}" href="/cluster-testsets">Testset Builder</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'cluster_experiments' %}active{% endif %}" href="/cluster-experiments">Cluster Experiments</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'vlm_tools' %}active{% endif %}" href="/vlm-tools">VLM Tools</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'scene_change_dataset' %}active{% endif %}" href="/scene-change-dataset">Scene Change Dataset</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'scene_change_strategy' %}active{% endif %}" href="/scene-change-strategy">Scene Change Strategy</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'pipeline' %}active{% endif %}" href="/pipeline">Pipeline</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'robot_pipeline' %}active{% endif %}" href="/robot-pipeline">Robot Pipeline</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'db' %}active{% endif %}" href="/db-admin">Database</a>
+      <a class="nav-link px-2 py-1 {% if active_page == 'yolo_compare' %}active{% endif %}" href="/yolo-compare">YOLO Compare</a>
+    </div>
+    <div class="d-flex align-items-center gap-2 ms-auto">
+      <label for="building-selector" class="form-label m-0 text-muted" style="font-size: 12px;">Building</label>
+      <select id="building-selector" class="form-select form-select-sm" style="width: 160px;" onchange="onBuildingChanged(this.value)">
+        <option value="">All Buildings</option>
+      </select>
+    </div>
+  </div>
+</nav>
+<script>
+(function() {
+  const STORAGE_KEY = 'bordsupr_selected_building';
+
+  window.getSelectedBuilding = function() {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  window.onBuildingChanged = function(value) {
+    try {
+      if (value) {
+        localStorage.setItem(STORAGE_KEY, value);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (e) {}
+    window.location.reload();
+  };
+
+  window.appendBuildingFilter = function(url) {
+    const building = window.getSelectedBuilding();
+    if (!building) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return url + sep + 'building=' + encodeURIComponent(building);
+  };
+
+  async function loadBuildings() {
+    try {
+      const res = await fetch('/api/buildings');
+      if (!res.ok) return;
+      const buildings = await res.json();
+      const selector = document.getElementById('building-selector');
+      if (!selector) return;
+      const current = window.getSelectedBuilding();
+      selector.innerHTML = '<option value="">All Buildings</option>';
+      for (const b of buildings) {
+        const opt = document.createElement('option');
+        opt.value = b.name;
+        opt.textContent = b.name;
+        if (b.name === current) opt.selected = true;
+        selector.appendChild(opt);
+      }
+    } catch (e) {
+      console.warn('Failed to load buildings:', e);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadBuildings);
+  } else {
+    loadBuildings();
+  }
+
+  // Re-fetch building list whenever the dropdown is opened so newly
+  // created maps appear without requiring a full page refresh.
+  function _attachBuildingRefresh() {
+    const selector = document.getElementById('building-selector');
+    if (selector) {
+      selector.addEventListener('mousedown', loadBuildings);
+      selector.addEventListener('focus', loadBuildings);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _attachBuildingRefresh);
+  } else {
+    _attachBuildingRefresh();
+  }
+
+  // Also refresh every 10 seconds in the background so newly created
+  // buildings appear automatically without any user interaction.
+  setInterval(loadBuildings, 10000);
+})();
+</script>

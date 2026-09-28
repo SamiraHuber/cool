@@ -1,0 +1,54 @@
+# agent_cued_24room: 24-room heading world, tuned a SLIGHT step toward
+# cue-driven navigation (config-only, no generator changes):
+# - more episodes per day (12-16 vs 10-14) and denser heading cues
+# - mildly flattened room priors (kitchen/home less dominant)
+# - null-change churn pushed into low-interest utility rooms
+# - snack/refreshment destinations spread beyond meeting rooms (+lounge)
+extends = "scaled_heading_24room.toml"
+name = "agent_cued_24room"
+# seed 42 collides: ep_d0_03's actor is also sampled into the 10:30 design
+# sync, the schedule cue wins the step, and the snack_delivery plate never
+# leaves the kitchen (validation error). Seed 43 is collision-free.
+seed = 43
+
+[output]
+dir = "data/curiosity/datasets/agent_cued_24room"
+
+[episodes]
+per_day = [12, 16]
+# never pick actors who are in a scheduled event during the episode window:
+# a schedule cue would win a shared cue step and silently drop the episode
+# intent (the seed-42 plate-collision failure mode). New configs only.
+exclude_event_actors = true
+
+# Spread snack/refreshment destinations: 3 meeting rooms + lounge.
+# (kitchen is excluded: it is the cue room, dest == cue room would be a no-op.)
+[episodes.templates.snack_delivery]
+dest_pool = ["meeting room 1", "meeting room 2", "meeting room 3", "lounge"]
+[episodes.templates.refreshment_prep]
+dest_pool = ["meeting room 1", "meeting room 2", "meeting room 3", "lounge"]
+
+[cues]
+p_heading = 0.6          # fallback for any source not listed below (was 0.5)
+
+[cues.p_heading_by_source]
+episode = 0.8            # was 0.7
+schedule = 0.7           # was 0.6
+random = 0.5             # was 0.4
+
+# Mild flattening of room priors: home/kitchen still attractive, but the
+# marginal advantage of "hot" rooms over ordinary rooms is much smaller.
+[decisions.base_affinity]
+home = 1.5               # was 2.0
+office_other = 0.5       # was 0.0
+kitchen = 1.5            # was 2.1
+meeting = 0.8            # was 0.3
+storage = 0.2            # was -0.4
+utility = 0.2            # was -0.4
+
+# Push aimless (null-change) motion into low-interest utility rooms:
+# counter-based tables get noise there, captions tell the agent it is nothing.
+[decisions.p_move.room_multipliers]
+storage = 1.5
+"printer room" = 1.5
+"server room" = 1.3

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scene Change Dataset</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; }
+    .workspace { padding: 16px; display: grid; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 14px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .metric-card { background: #f8f9fa; border-radius: 10px; padding: 12px; text-align: center; }
+    .metric-value { font-size: 22px; font-weight: 700; }
+    .metric-label { font-size: 12px; color: #637182; }
+    .room-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .room-bar-label { width: 120px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .room-bar-track { flex: 1; height: 20px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+    .room-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+    .room-bar-value { width: 50px; text-align: right; font-size: 13px; font-weight: 600; }
+
+    .change-badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+    .change-no { background: #e9ecef; color: #495057; }
+    .change-minor { background: #fff3cd; color: #856404; }
+    .change-major { background: #f8d7da; color: #721c24; }
+
+    .matrix-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+    .matrix-container { display: inline-block; }
+    .matrix-row { display: flex; align-items: center; height: 22px; }
+    .matrix-room-label { width: 110px; font-size: 11px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; padding-right: 8px; text-align: right; }
+    .matrix-cells { display: flex; gap: 1px; }
+    .matrix-cell { width: 5px; height: 18px; border-radius: 1px; flex-shrink: 0; }
+    .matrix-cell.no { background: #e9ecef; }
+    .matrix-cell.minor { background: #ffc107; }
+    .matrix-cell.major { background: #dc3545; }
+    .matrix-time-row { display: flex; margin-left: 118px; height: 18px; position: relative; }
+    .matrix-time-tick { position: absolute; top: 2px; font-size: 9px; color: #637182; white-space: nowrap; transform: translateX(-50%); }
+    .matrix-legend { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 11px; color: #637182; }
+    .matrix-legend-swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+    .scene-table { font-size: 10.5px; }
+    .scene-table th { font-size: 10px; font-weight: 600; color: #637182; white-space: nowrap; }
+    .scene-table td { vertical-align: middle; }
+    .inter-tuple { font-size: 10px; color: #334; background: #f4f6fa; border-radius: 4px; padding: 1px 4px; margin: 1px 2px 1px 0; display: inline-block; }
+    .inter-caption { font-size: 10px; color: #555; font-style: italic; }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <!-- Controls -->
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Scene Change Dataset</h5>
+        <div class="muted">Browse the synthetic office scene-change dataset: people, objects, and ground-truth change labels.</div>
+      </div>
+      <div class="panel-body">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label">Day</label>
+            <select id="daySelect" class="form-select" onchange="loadDataset()">
+              <option value="2026-05-26">Day 1 — Normal (2026-05-26)</option>
+              <option value="2026-05-27">Day 2 — Demo Day (2026-05-27)</option>
+              <option value="2026-05-28">Day 3 — Crunch (2026-05-28)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Room Filter</label>
+            <select id="roomSelect" class="form-select" onchange="loadDataset()">
+              <option value="">All Rooms</option>
+              <option value="kitchen">Kitchen</option>
+              <option value="storage">Storage</option>
+              <option value="office 1">Office 1</option>
+              <option value="office 2">Office 2</option>
+              <option value="office 3">Office 3</option>
+              <option value="meeting room">Meeting Room</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Change Filter</label>
+            <select id="changeSelect" class="form-select" onchange="loadDataset()">
+              <option value="">All</option>
+              <option value="no_change">No Change</option>
+              <option value="minor_change">Minor Change</option>
+              <option value="major_change">Major Change</option>
+            </select>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" onclick="loadDataset()">Refresh</button>
+          </div>
+        </div>
+        <div id="datasetOutput" class="mt-4"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    }
+
+    function changeBadge(changeType) {
+      const cls = changeType === 'major_change' ? 'change-major' : (changeType === 'minor_change' ? 'change-minor' : 'change-no');
+      const label = changeType === 'major_change' ? 'Major' : (changeType === 'minor_change' ? 'Minor' : 'None');
+      return `<span class="change-badge ${cls}">${label}</span>`;
+    }
+
+    function renderMatrix(matrix) {
+      if (!matrix || !matrix.timestamps || !matrix.changes) return '';
+      const timestamps = matrix.timestamps;
+      const rooms = matrix.rooms || [];
+      const changes = matrix.changes;
+      const deltas = matrix.deltas || [];
+      const cellWidth = 6;
+
+      const ticks = [];
+      let lastLabel = '';
+      for (let i = 0; i < timestamps.length; i++) {
+        const t = timestamps[i];
+        if (t.endsWith(':00') || t.endsWith(':30')) {
+          if (t !== lastLabel) {
+            ticks.push({ idx: i, label: t });
+            lastLabel = t;
+          }
+        }
+      }
+
+      const rowsHtml = rooms.map((room, rIdx) => {
+        const cellsHtml = changes[rIdx].map((ch, tIdx) => {
+          const cls = ch === 'major_change' ? 'major' : (ch === 'minor_change' ? 'minor' : 'no');
+          const d = (deltas[rIdx] && deltas[rIdx][tIdx]) || {};
+          const pa = (d.people_added || []).join(', ');
+          const pr = (d.people_removed || []).join(', ');
+          const oa = (d.objects_added || []).join(', ');
+          const orm = (d.objects_removed || []).join(', ');
+          let tooltip = `${escapeHtml(room)} @ ${escapeHtml(timestamps[tIdx])}: ${ch}`;
+          if (pa) tooltip += `\n+People: ${pa}`;
+          if (pr) tooltip += `\n-People: ${pr}`;
+          if (oa) tooltip += `\n+Objects: ${oa}`;
+          if (orm) tooltip += `\n-Objects: ${orm}`;
+          return `<div class="matrix-cell ${cls}" title="${tooltip}"></div>`;
+        }).join('');
+        return `
+          <div class="matrix-row">
+            <div class="matrix-room-label" title="${escapeHtml(room)}">${escapeHtml(room)}</div>
+            <div class="matrix-cells">${cellsHtml}</div>
+          </div>
+        `;
+      }).join('');
+
+      const ticksHtml = ticks.map(tick => {
+        const left = tick.idx * cellWidth + (cellWidth / 2);
+        return `<div class="matrix-time-tick" style="left: ${left}px;">${escapeHtml(tick.label)}</div>`;
+      }).join('');
+
+      return `
+        <h6 class="mb-2">Change Matrix</h6>
+        <div class="muted mb-2">Red = major change, Yellow = minor change, Gray = no change. Scroll horizontally.</div>
+        <div class="matrix-scroll">
+          <div class="matrix-container">
+            ${rowsHtml}
+            <div class="matrix-time-row" style="width: ${timestamps.length * cellWidth}px;">
+              ${ticksHtml}
+            </div>
+          </div>
+        </div>
+        <div class="matrix-legend">
+          <span><span class="matrix-legend-swatch" style="background:#dc3545;"></span> Major</span>
+          <span><span class="matrix-legend-swatch" style="background:#ffc107;"></span> Minor</span>
+          <span><span class="matrix-legend-swatch" style="background:#e9ecef;"></span> None</span>
+        </div>
+      `;
+    }
+
+    async function loadDataset() {
+      const out = document.getElementById('datasetOutput');
+      const day = document.getElementById('daySelect').value;
+      const room = document.getElementById('roomSelect').value;
+      const change = document.getElementById('changeSelect').value;
+      out.innerHTML = '<div class="muted">Loading dataset…</div>';
+      try {
+        const params = new URLSearchParams();
+        params.set('day', day);
+        if (room) params.set('room', room);
+        if (change) params.set('change_type', change);
+        const data = await fetchJson(`/api/scene-change-dataset?${params}`);
+
+        const maxChanges = Math.max(...Object.values(data.changes_per_room || {}), 1);
+        const roomBars = (data.rooms || []).map(room => {
+          const count = data.changes_per_room[room] || 0;
+          const pct = (count / maxChanges) * 100;
+          const color = count === 0 ? '#adb5bd' : '#dc3545';
+          return `
+            <div class="room-bar">
+              <div class="room-bar-label" title="${escapeHtml(room)}">${escapeHtml(room)}</div>
+              <div class="room-bar-track">
+                <div class="room-bar-fill" style="width: ${pct}%; background: ${color};"></div>
+              </div>
+              <div class="room-bar-value">${count}</div>
+            </div>
+          `;
+        }).join('');
+
+        const matrixHtml = renderMatrix(data.matrix);
+
+        const scenesHtml = (data.scenes || []).slice(0, 50).map(s => {
+          const inters = (s.interactions || []);
+          const interTuples = inters.map(i => `<span class="inter-tuple" title="${escapeHtml(i.caption || '')}">${escapeHtml(i.subject || '?')} + ${escapeHtml(i.action || '?')} + ${escapeHtml(i.target || '?')}</span>`).join(' ') || '<span class="text-muted">-</span>';
+          const interCaptions = inters.map(i => `<div class="inter-caption">${escapeHtml(i.caption || '')}</div>`).join('') || '<span class="text-muted">-</span>';
+          return `
+          <tr>
+            <td>${escapeHtml(s.time)}</td>
+            <td>${escapeHtml(s.room)}</td>
+            <td>${changeBadge(s.change_type)}</td>
+            <td>${escapeHtml(s.people_present.join(', ') || '-')}</td>
+            <td>${escapeHtml(s.objects_present.join(', ') || '-')}</td>
+            <td>${interTuples}</td>
+            <td>${interCaptions}</td>
+            <td class="text-muted">${escapeHtml(s.scene.substring(0, 80))}${s.scene.length > 80 ? '…' : ''}</td>
+          </tr>
+        `}).join('');
+
+        out.innerHTML = `
+          <div class="mb-3">
+            <div class="muted">Dataset: <code>${escapeHtml(data.dataset_path)}</code></div>
+            <div class="muted">Day: ${escapeHtml(data.day)} | Total scenes: ${data.total_scenes} | Changes: ${data.total_changes}</div>
+          </div>
+          <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3">
+              <div class="metric-card">
+                <div class="metric-value">${data.total_scenes.toLocaleString()}</div>
+                <div class="metric-label">Total Scenes</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="metric-card">
+                <div class="metric-value">${data.total_changes.toLocaleString()}</div>
+                <div class="metric-label">Total Changes</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="metric-card">
+                <div class="metric-value">${data.major_changes.toLocaleString()}</div>
+                <div class="metric-label">Major Changes</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="metric-card">
+                <div class="metric-value">${data.minor_changes.toLocaleString()}</div>
+                <div class="metric-label">Minor Changes</div>
+              </div>
+            </div>
+          </div>
+          <h6 class="mb-3">Change Distribution Across Rooms</h6>
+          ${roomBars}
+          <hr class="my-4">
+          ${matrixHtml}
+          <hr class="my-4">
+          <h6 class="mb-3">Scene Browser (first 50)</h6>
+          <div class="table-responsive">
+            <table class="table table-sm scene-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Room</th>
+                  <th>Change</th>
+                  <th>People</th>
+                  <th>Objects</th>
+                  <th>Interactions</th>
+                  <th>Captions</th>
+                  <th>Scene</th>
+                </tr>
+              </thead>
+              <tbody>${scenesHtml}</tbody>
+            </table>
+          </div>
+        `;
+      } catch (err) {
+        out.innerHTML = `<div class="alert alert-danger">${escapeHtml(String(err))}</div>`;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDataset);
+  </script>
+</body>
+</html>

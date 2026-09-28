@@ -1,0 +1,50 @@
+# agent_cued_flat_24room: the BIGGER adaptation of agent_cued_24room —
+# same levers, pushed further (config-only, no generator changes):
+# - episodes 16-20/day, heading cues on most departures
+# - fully flat room priors: marginals carry almost no information, so the
+#   only predictive signal left is in the captions (intent/heading cues)
+# - stronger distractor churn in utility rooms, damped in kitchen/lounge
+# - softer destination softmax (tau 1.2) so background moves spread evenly
+extends = "agent_cued_24room.toml"
+name = "agent_cued_flat_24room"
+# own seed: 43 collides for this denser episode schedule (ep_d0_09 plate).
+seed = 44
+
+[output]
+dir = "data/curiosity/datasets/agent_cued_flat_24room"
+
+[episodes]
+per_day = [16, 20]
+
+# Coordinated exodus also spreads to the lounge (homes are offices, so an
+# explicit meeting+lounge pool can never collapse to a no-op home trip).
+[episodes.templates.coordinated_exodus]
+dest_pool = ["meeting room 1", "meeting room 2", "meeting room 3", "lounge"]
+
+[cues]
+p_heading = 0.7
+
+[cues.p_heading_by_source]
+episode = 0.85
+schedule = 0.75
+random = 0.55
+
+# Flat priors: every room equally attractive a priori.
+[decisions.base_affinity]
+home = 1.0
+office_other = 1.0
+kitchen = 1.0
+meeting = 1.0
+storage = 1.0
+utility = 1.0
+
+# Softer softmax -> background destinations spread more uniformly.
+[decisions]
+tau = 1.2
+
+[decisions.p_move.room_multipliers]
+storage = 2.0
+"printer room" = 2.0
+"server room" = 1.8
+kitchen = 0.9
+lounge = 0.9

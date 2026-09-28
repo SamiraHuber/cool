@@ -1,0 +1,9 @@
+string role
+string track_id
+int32 detection_id
+int32 class_id
+string class_name
+int32 x_min
+int32 y_min
+int32 x_max
+int32 y_max

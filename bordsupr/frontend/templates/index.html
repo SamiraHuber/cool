@@ -1,0 +1,3508 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Scene and Object Browser</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    .main-content { display: flex; height: calc(100vh - 56px); }
+    .panel { flex: 1; overflow: auto; padding: 16px; border-right: 1px solid #eee; }
+    .panel:last-child { border-right: none; }
+    .item { padding: 8px; border: 1px solid #ddd; margin-bottom: 8px; cursor: pointer; border-radius: 8px; }
+    .item:hover { background: #f7f7f7; }
+    .item.active { border-color: #0f766e; background: #edf8f5; }
+    .list-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .person-card { display: grid; grid-template-columns: 186px 1fr; gap: 10px; align-items: start; }
+    .person-card-media-grid { display: grid; grid-template-columns: repeat(2, 88px); gap: 10px; }
+    .person-card-media { width: 88px; height: 88px; border-radius: 10px; overflow: hidden; border: 1px solid #d7dee7; background: #f8fafc; }
+    .person-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .person-card-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; }
+    .person-card-body { min-width: 0; }
+    .thumb-card-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+    .thumb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
+    .thumb-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid #ccc; }
+    .scene-preview { width: 100%; max-height: 420px; object-fit: contain; border-radius: 12px; border: 1px solid #ccc; background: #fafafa; }
+    .muted { color: #666; font-size: 12px; }
+    .nav-link.active { font-weight: bold; }
+    .map-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .map-card { border: 1px solid #ddd; border-radius: 12px; background: #fff; padding: 12px; margin-bottom: 16px; }
+    .map-svg { width: 100%; height: 420px; border-radius: 12px; border: 1px solid #ccc; background: linear-gradient(180deg, #fbfbfb 0%, #f1f4f6 100%); }
+    .map-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #555; margin-top: 8px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .stat-card { border: 1px solid #ddd; border-radius: 10px; padding: 10px; background: #fafafa; }
+    .zoom-toolbar { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-bottom: 8px; flex-wrap: wrap; }
+    .zoom-label { color: #555; font-size: 12px; min-width: 56px; text-align: right; }
+    .zoom-viewport { overflow: auto; border-radius: 12px; border: 1px solid #ccc; background: linear-gradient(180deg, #fbfbfb 0%, #f1f4f6 100%); max-height: 520px; }
+    .zoom-stage { min-width: 100%; min-height: 420px; display: flex; align-items: flex-start; justify-content: flex-start; }
+    .map-svg.zoomable { width: auto; max-width: none; flex: 0 0 auto; border: none; border-radius: 0; }
+    .clickable-image { cursor: zoom-in; }
+    .image-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.78); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 3000; }
+    .image-modal.open { display: flex; }
+    .image-modal-card { max-width: min(92vw, 1200px); max-height: 92vh; background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28); }
+    .image-modal-title { color: #475569; font-size: 13px; margin-bottom: 10px; }
+    .image-modal-img { display: block; max-width: 100%; max-height: calc(92vh - 70px); border-radius: 12px; background: #f8fafc; }
+    .image-modal-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
+    .image-modal-status { color: #475569; font-size: 12px; flex: 1; min-width: 220px; }
+    .scene-nav-btn { position: fixed; top: 64px; right: 16px; z-index: 2000; }
+  </style>
+</head>
+<body>
+
+  {% include "_topnav.html" %}
+
+  <button id="earlier-scene-btn" class="btn btn-primary scene-nav-btn" onclick="focusEarlierScene()" disabled>← Earlier scene</button>
+
+  <div class="main-content">
+    <div class="panel" id="scenes-panel">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h3 class="mb-0">Scenes</h3>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-danger" onclick="clearScenesForBuilding(); return false;">Clear all scenes</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteSelectedBuildingAndSwitch(); return false;">Delete building</button>
+        </div>
+      </div>
+      <div class="mb-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="filter-with-description" onchange="renderScenesTable()">
+          <label class="form-check-label" for="filter-with-description">Only show scenes with a description</label>
+        </div>
+      </div>
+      <div id="scenes-table"></div>
+    </div>
+    <div class="panel" id="objects-panel" style="display:none;">
+      <h3>Object Clusters</h3>
+      <div class="mb-2 d-flex gap-3 flex-wrap align-items-end">
+        <div>
+          <label class="form-label" for="filter-min-observations">Minimum observations</label>
+          <input type="number" class="form-control" id="filter-min-observations" value="0" min="0" style="max-width: 120px;" onchange="minObservations = Math.max(0, parseInt(this.value, 10) || 0); loadMoreObjects({ reset: true });">
+        </div>
+        <div>
+          <label class="form-label" for="filter-object-class">Class</label>
+          <select class="form-select" id="filter-object-class" style="min-width: 160px;" onchange="objectClassFilter = this.value; loadMoreObjects({ reset: true });">
+            <option value="">All classes</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="filter-object-sort">Sort by</label>
+          <select class="form-select" id="filter-object-sort" style="min-width: 170px;" onchange="objectSort = this.value; loadMoreObjects({ reset: true });">
+            <option value="last_seen">Last seen (newest)</option>
+            <option value="observations">Observations (most)</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="filter-object-id">Object ID</label>
+          <input type="text" inputmode="numeric" class="form-control" id="filter-object-id" placeholder="e.g. 9812309399" style="max-width: 160px;"
+                 oninput="objectIdSearch = this.value.trim().replace(/[^0-9]/g,''); queueObjectIdSearch();"
+                 onkeydown="if (event.key === 'Enter') { event.preventDefault(); objectIdSearch = this.value.trim().replace(/[^0-9]/g,''); loadMoreObjects({ reset: true }); }">
+        </div>
+        <div>
+          <label class="form-label" for="filter-object-name">Name</label>
+          <input type="text" class="form-control" id="filter-object-name" placeholder="e.g. laptop_004" style="max-width: 180px;"
+                 oninput="objectNameSearch = this.value.trim(); queueObjectNameSearch();"
+                 onkeydown="if (event.key === 'Enter') { event.preventDefault(); objectNameSearch = this.value.trim(); loadMoreObjects({ reset: true }); }">
+        </div>
+        <div>
+          <label class="form-label">Face rebuild</label>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <button type="button" class="btn btn-sm btn-primary" id="recluster-faces-btn" onclick="runFaceRecluster()">Recluster faces</button>
+            <span class="d-flex align-items-center gap-1">
+              <label class="form-label mb-0 meta" for="recluster-body-merge-sim" title="OSNet body-embedding cosine similarity threshold for merging provisional fragments into a main cluster. This is the MAIN dial: lower = visibly more merges, higher = visibly fewer. (The margin scales with this value.)">body sim</label>
+              <input id="recluster-body-merge-sim" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.70" style="width: 76px;" title="OSNet body-embedding cosine similarity threshold. MAIN dial: lower = more merges, higher = fewer. Effective margin = margin × body sim.">
+            </span>
+            <span class="d-flex align-items-center gap-1">
+              <label class="form-label mb-0 meta" for="recluster-body-merge-margin" title="Disambiguation strength. The required winner's margin = margin × body sim, so it scales with body sim. Higher = rejects ambiguous/mixed fragments more aggressively. Set 0 to merge purely on body sim.">margin</label>
+              <input id="recluster-body-merge-margin" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.02" style="width: 70px;" title="Disambiguation strength. Effective required margin = margin × body sim. Higher = stricter; 0 = merge on body sim alone.">
+            </span>
+            <span class="d-flex align-items-center gap-1" title="Also re-run face detection on observations previously marked 'no face found' (NULL embedding). Most are genuinely back-of-head/occluded, so this recovers few faces and is slower.">
+              <input class="form-check-input" type="checkbox" id="recluster-refind-faces">
+              <label class="form-check-label meta" for="recluster-refind-faces">refind faces</label>
+            </span>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Object recluster</label>
+          <div class="d-flex gap-2 align-items-center flex-wrap">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="recluster-objects-btn" onclick="runObjectRecluster()">Recluster objects</button>
+            <span class="d-flex align-items-center gap-1">
+              <label class="form-label mb-0 meta" for="recluster-object-sim" title="Cosine similarity threshold for clustering NON-person object observations (ConvNeXt embeddings). Lower = merges more (fewer, larger clusters); higher = splits more. Persons are NOT affected (use Recluster faces for those).">obj sim</label>
+              <input id="recluster-object-sim" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.50" style="width: 70px;" title="Cosine similarity threshold for non-person object clustering. Lower = merge more; higher = split more.">
+            </span>
+          </div>
+        </div>
+        <div id="recluster-objects-result" class="meta" style="align-self:center;"></div>
+        <div id="recluster-faces-result" class="meta" style="align-self:center;"></div>
+      </div>
+      <div id="objects-list"></div>
+    </div>
+    <div class="panel" id="persons-panel" style="display:none;">
+      <h3>Recognized Persons</h3>
+      <div class="list-toolbar">
+        <div class="form-check m-0">
+          <input class="form-check-input" type="checkbox" id="filter-persons-with-face" onchange="togglePersonsWithFaceFilter()">
+          <label class="form-check-label" for="filter-persons-with-face">Only show persons with at least one face</label>
+        </div>
+      </div>
+      <div id="persons-list"></div>
+    </div>
+    <div class="panel" id="interactions-panel" style="display:none;">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h3 class="mb-0">Interactions</h3>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="interactions-both-linked" onchange="toggleInteractionsBothLinked()">
+            <label class="form-check-label" for="interactions-both-linked">Two linked objects only</label>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="reload-interactions-btn" onclick="reloadInteractions()">Reload interactions</button>
+        </div>
+      </div>
+      <div id="reload-interactions-result" class="meta mb-2"></div>
+      <div id="interactions-list"></div>
+    </div>
+    <div class="panel" id="map-panel" style="display:none;">
+      <h3>Map</h3>
+      <div id="map-content"></div>
+    </div>
+    <div class="panel" id="robot-view-panel" style="display:none;">
+      <h3>Robot View</h3>
+      <div id="robot-view-content"></div>
+    </div>
+    <div class="panel" id="details-panel" style="display:none;">
+      <h3 id="detailTitle">Details</h3>
+      <div id="details">Select an object cluster.</div>
+    </div>
+  </div>
+
+  <div id="image-modal" class="image-modal" onclick="closeImageModal()">
+    <div class="image-modal-card" onclick="event.stopPropagation()">
+      <div id="image-modal-title" class="image-modal-title"></div>
+      <img id="image-modal-img" class="image-modal-img" alt="Preview" />
+      <div class="image-modal-actions">
+        <div id="image-modal-status" class="image-modal-status"></div>
+        <button id="image-modal-navigate-btn" class="btn btn-primary btn-sm" style="display:none;" onclick="planNavigationToModalDetection()">Navigate here</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+
+    let rooms = [];
+    let scenes = [];
+    let objects = [];
+    let persons = [];
+    let selectedPersonId = null;
+    let selectedSceneId = null;
+    let filterPersonsWithFace = false;
+    let interactions = [];
+    let interactionsBothLinked = false;
+    let observationTopoObservations = [];
+    let lidarOccupancyMap = null;
+    let toolboxMapSnapshot = null;
+    let nav2GlobalCostmap = null;
+    let toolboxMapPersistence = { available: false, maps: [], status: { state: 'idle' } };
+    let slamRobotPose = null;
+    let lidarDetectionMarkers = [];
+    let lidarScanSnapshot = null;
+    let currentTab = 'scenes';
+    let mapRefreshTimer = null;
+    let occupancyMapZoom = 1;
+    let plannedNavigation = null;
+    let navigationExecutionStatus = { available: false, state: 'idle' };
+    let robotViewRange = 8;
+    let imageModalContext = null;
+    let showPersistedDetectionImages = false;
+    let selectedToolboxSavedMapName = '';
+    let newMapStartedAt = 0;
+    let mapRefreshInFlight = false;
+    let toolboxMapActionInProgress = false;
+    let customPathMode = false;
+    let customPathPoints = [];
+    let customPathError = null;
+    let clickToPlanMode = false;
+    let clickToPlanError = null;
+    let roomMarkingMode = false;
+    let roomDraftPoints = [];
+    let roomDrafts = [];
+    let roomDraftName = '';
+    let roomDraftError = null;
+    const mapCoordParams = {};
+    const occupancyGridBaseCache = new Map();
+    const NEW_MAP_EMPTY_VIEW_MS = 10000;
+    const SCENES_PAGE_SIZE = 50;
+    const OBJECTS_PAGE_SIZE = 50;
+    let scenePagination = { offset: 0, total: null, hasMore: true, loading: false, initialized: false, error: null };
+    let objectPagination = { offset: 0, total: null, hasMore: true, loading: false, initialized: false, error: null };
+    let occupancyMapScrollState = {
+      map: { left: 0, top: 0 },
+      map_costmap: { left: 0, top: 0 },
+      map_lidar: { left: 0, top: 0 },
+    };
+    const tabLoaded = new Set();
+    let minObservations = 0;
+    let objectClassFilter = '';
+    let objectSort = 'last_seen';
+    let objectIdSearch = '';
+    let objectIdSearchTimer = null;
+    function queueObjectIdSearch() {
+      if (objectIdSearchTimer) clearTimeout(objectIdSearchTimer);
+      objectIdSearchTimer = setTimeout(() => loadMoreObjects({ reset: true }), 350);
+    }
+    let objectNameSearch = '';
+    let objectNameSearchTimer = null;
+    function queueObjectNameSearch() {
+      if (objectNameSearchTimer) clearTimeout(objectNameSearchTimer);
+      objectNameSearchTimer = setTimeout(() => loadMoreObjects({ reset: true }), 350);
+    }
+
+    async function loadTabData(tab) {
+      if (tabLoaded.has(tab)) {
+        return;
+      }
+      tabLoaded.add(tab);
+
+      try {
+        if (tab === 'scenes') {
+          if (!scenePagination.initialized) {
+            await loadMoreScenes({ reset: true });
+          }
+          if (!interactions.length) {
+            const res = await fetch(appendBuildingFilter('/api/interactions'));
+            interactions = await res.json();
+          }
+        } else if (tab === 'objects') {
+          await loadObjectClassFilter();
+          if (!objectPagination.initialized) {
+            await loadMoreObjects({ reset: true });
+          }
+        } else if (tab === 'persons') {
+          if (!persons.length) {
+            const res = await fetch(appendBuildingFilter('/api/persons'));
+            persons = await res.json();
+            renderPersonsList();
+          }
+        } else if (tab === 'interactions') {
+          if (!interactions.length) {
+            const res = await fetch(appendBuildingFilter(`/api/interactions?both_linked=${interactionsBothLinked}`));
+            interactions = await res.json();
+          }
+          renderInteractionsList();
+        } else if (tab === 'map') {
+          const [mapRes, costmapRes, persistenceRes, markersRes, navRes, roomsRes, scanRes, lidarRes] = await Promise.all([
+            fetch('/api/toolbox_map'),
+            fetch('/api/nav2_global_costmap'),
+            fetch('/api/toolbox_map/persistence'),
+            fetch(appendBuildingFilter('/api/lidar_detection_markers')),
+            fetch('/api/navigation/status'),
+            fetch(`/api/rooms?_=${Date.now()}`, { cache: 'no-store' }),
+            fetch('/api/lidar_scan'),
+            fetch('/api/lidar_occupancy_map'),
+          ]);
+          toolboxMapSnapshot = await mapRes.json();
+          nav2GlobalCostmap = await costmapRes.json();
+          toolboxMapPersistence = await persistenceRes.json();
+          lidarDetectionMarkers = await markersRes.json();
+          navigationExecutionStatus = await navRes.json();
+          rooms = await roomsRes.json();
+          lidarScanSnapshot = await scanRes.json();
+          lidarOccupancyMap = await lidarRes.json();
+          syncSelectedToolboxSavedMap();
+          renderMapPanel();
+        } else if (tab === 'robot_view') {
+          const [mapRes, obsRes, poseRes] = await Promise.all([
+            fetch('/api/lidar_occupancy_map'),
+            fetch(appendBuildingFilter('/api/observation_topo/observations')),
+            fetch('/api/slam/robot_pose').catch(() => null),
+          ]);
+          lidarOccupancyMap = await mapRes.json();
+          observationTopoObservations = await obsRes.json();
+          slamRobotPose = poseRes && poseRes.ok ? await poseRes.json() : null;
+          renderRobotViewPanel();
+        }
+      } catch (error) {
+        console.error(`Failed to load tab data for ${tab}`, error);
+      }
+    }
+
+    function getObjectById(objectId) {
+      return objects.find(o => o.id === objectId) || null;
+    }
+
+    function renderPagedCountLabel(items, pagination, noun) {
+      if (pagination.total === null) {
+        return `Loaded ${items.length} ${noun}.`;
+      }
+      return `Loaded ${items.length} of ${pagination.total} ${noun}.`;
+    }
+
+    async function loadMoreScenes({ reset = false } = {}) {
+      if (scenePagination.loading) {
+        return;
+      }
+      if (!reset && !scenePagination.hasMore) {
+        return;
+      }
+      if (reset) {
+        scenes = [];
+        scenePagination = { offset: 0, total: null, hasMore: true, loading: false, initialized: false, error: null };
+        renderScenesTable();
+      }
+
+      scenePagination.loading = true;
+      scenePagination.error = null;
+      renderScenesTable();
+      try {
+        const response = await fetch(appendBuildingFilter(`/api/scenes?limit=${SCENES_PAGE_SIZE}&offset=${scenePagination.offset}`));
+        const payload = await response.json();
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        scenes = reset ? items : scenes.concat(items);
+        scenePagination.offset = scenes.length;
+        scenePagination.total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : scenes.length;
+        scenePagination.hasMore = Boolean(payload.has_more);
+        scenePagination.initialized = true;
+      } catch (error) {
+        console.error('Failed to load scenes', error);
+        scenePagination.error = 'Failed to load scenes.';
+      } finally {
+        scenePagination.loading = false;
+        renderScenesTable();
+        window.requestAnimationFrame(() => handleLazyPanelScroll('scenes'));
+      }
+    }
+
+    async function loadObjectClassFilter() {
+      const select = document.getElementById('filter-object-class');
+      if (!select) {
+        return;
+      }
+      try {
+        const response = await fetch(appendBuildingFilter('/api/object-classes'));
+        const classes = await response.json();
+        const current = objectClassFilter;
+        select.innerHTML = '<option value="">All classes</option>' + (Array.isArray(classes) ? classes : []).map(c => {
+          const value = String(c.class_id);
+          const label = `${c.class_name} (${c.class_id}) — ${c.cluster_count}`;
+          const selected = value === String(current) ? ' selected' : '';
+          return `<option value="${escapeHtml(value)}"${selected}>${escapeHtml(label)}</option>`;
+        }).join('');
+      } catch (error) {
+        console.error('Failed to load object classes', error);
+      }
+    }
+
+    let _faceReclusterPollTimer = null;
+    async function runFaceRecluster() {
+      const resultDiv = document.getElementById('recluster-faces-result');
+      const btn = document.getElementById('recluster-faces-btn');
+      const building = (window.getSelectedBuilding && window.getSelectedBuilding()) || '';
+      const scopeText = building ? `person clusters in map "${building}"` : 'ALL person clusters (no map selected)';
+      if (!window.confirm(`Rebuild ${scopeText} from face embeddings? This merges and splits person clusters and re-populates face observations. Continue?`)) {
+        return;
+      }
+      if (_faceReclusterPollTimer) {
+        clearInterval(_faceReclusterPollTimer);
+        _faceReclusterPollTimer = null;
+      }
+      if (btn) btn.disabled = true;
+      resultDiv.textContent = 'Starting face recluster...';
+      try {
+        const simInput = document.getElementById('recluster-body-merge-sim');
+        const marginInput = document.getElementById('recluster-body-merge-margin');
+        const refindInput = document.getElementById('recluster-refind-faces');
+        const params = new URLSearchParams();
+        if (simInput && simInput.value !== '') params.set('body_merge_sim', simInput.value);
+        if (marginInput && marginInput.value !== '') params.set('body_merge_margin', marginInput.value);
+        if (refindInput && refindInput.checked) params.set('refind_faces', 'true');
+        if (building) params.set('building', building);
+        const qs = params.toString();
+        const res = await fetch('/api/objects/recluster-faces' + (qs ? `?${qs}` : ''), { method: 'POST' });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `Face recluster failed with ${res.status}`);
+        }
+        const startData = await res.json();
+        const jobId = startData.job_id;
+        resultDiv.innerHTML = `<span class="meta">Face reclustering… job <code>${escapeHtml(jobId)}</code> started.</span>`;
+        _faceReclusterPollTimer = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/objects/recluster-faces/jobs/${jobId}`);
+            if (!pollRes.ok) return;
+            const job = await pollRes.json();
+            if (job.status === 'running') {
+              const done = job.steps_done || 0;
+              const total = job.total_steps || 4;
+              const phase = job.phase ? ` (${escapeHtml(job.phase)})` : '';
+              resultDiv.innerHTML = `<span class="meta">Face reclustering… step ${done} / ${total}${phase}</span>`;
+            } else if (job.status === 'done') {
+              clearInterval(_faceReclusterPollTimer);
+              _faceReclusterPollTimer = null;
+              if (btn) btn.disabled = false;
+              const r = job.result || {};
+              const fg = r.face_generation;
+              const fgText = fg && fg.ran ? ` Generated face embeddings for ${fg.pending || 0} new obs.` : '';
+              resultDiv.innerHTML = `
+                <div style="border-left:3px solid #0d6efd;background:#f0f5ff;padding:6px 10px;border-radius:8px;">
+                  <div style="font-weight:700;color:#0d6efd;font-size:13px;">Face recluster complete</div>
+                  <div class="meta">${r.identities || 0} identities, ${r.observations_moved || 0} obs moved, ${r.provisional_body_merged || 0} fragments body-merged, ${r.face_observations_rebuilt || 0} faces rebuilt.${escapeHtml(fgText)}</div>
+                </div>
+              `;
+              loadMoreObjects({ reset: true });
+            } else if (job.status === 'error') {
+              clearInterval(_faceReclusterPollTimer);
+              _faceReclusterPollTimer = null;
+              if (btn) btn.disabled = false;
+              resultDiv.innerHTML = `<span style="color:#b00020;">${escapeHtml(job.error || 'Unknown error')}</span>`;
+            }
+          } catch (e) {
+            // ignore poll errors
+          }
+        }, 2000);
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        resultDiv.innerHTML = `<span style="color:#b00020;">${escapeHtml(err.message || String(err))}</span>`;
+      }
+    }
+
+    let _objectReclusterPollTimer = null;
+    async function runObjectRecluster() {
+      const resultDiv = document.getElementById('recluster-objects-result');
+      const btn = document.getElementById('recluster-objects-btn');
+      if (!window.confirm('Recluster ALL non-person object clusters from scratch (merge + split)? Person clusters are NOT affected. Continue?')) {
+        return;
+      }
+      if (_objectReclusterPollTimer) {
+        clearInterval(_objectReclusterPollTimer);
+        _objectReclusterPollTimer = null;
+      }
+      if (btn) btn.disabled = true;
+      resultDiv.textContent = 'Starting object recluster...';
+      try {
+        const simInput = document.getElementById('recluster-object-sim');
+        const params = new URLSearchParams();
+        params.set('exclude_persons', 'true');
+        if (simInput && simInput.value !== '') params.set('object_similarity_threshold', simInput.value);
+        const res = await fetch('/api/objects/recluster?' + params.toString(), { method: 'POST' });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `Object recluster failed with ${res.status}`);
+        }
+        const startData = await res.json();
+        const jobId = startData.job_id;
+        resultDiv.innerHTML = `<span class="meta">Reclustering objects… job <code>${escapeHtml(jobId)}</code> started.</span>`;
+        _objectReclusterPollTimer = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/objects/recluster/jobs/${jobId}`);
+            if (!pollRes.ok) return;
+            const job = await pollRes.json();
+            if (job.status === 'running' || job.status === 'queued') {
+              const done = job.classes_done || 0;
+              const total = job.total_classes || 0;
+              resultDiv.innerHTML = `<span class="meta">Reclustering objects… class ${done} / ${total}</span>`;
+            } else if (job.status === 'done') {
+              clearInterval(_objectReclusterPollTimer);
+              _objectReclusterPollTimer = null;
+              if (btn) btn.disabled = false;
+              const r = job.result || {};
+              resultDiv.innerHTML = `
+                <div style="border-left:3px solid #0d6efd;background:#f0f5ff;padding:6px 10px;border-radius:8px;">
+                  <div style="font-weight:700;color:#0d6efd;font-size:13px;">Object recluster complete</div>
+                  <div class="meta">${r.classes_processed || 0} classes, ${r.observations_reassigned || 0} obs reassigned, ${r.objects_created || 0} created, ${r.objects_deleted || 0} deleted.</div>
+                </div>
+              `;
+              loadMoreObjects({ reset: true });
+            } else if (job.status === 'error') {
+              clearInterval(_objectReclusterPollTimer);
+              _objectReclusterPollTimer = null;
+              if (btn) btn.disabled = false;
+              resultDiv.innerHTML = `<span style="color:#b00020;">${escapeHtml(job.error || 'Unknown error')}</span>`;
+            }
+          } catch (e) {
+            // ignore poll errors
+          }
+        }, 2000);
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        resultDiv.innerHTML = `<span style="color:#b00020;">${escapeHtml(err.message || String(err))}</span>`;
+      }
+    }
+
+    async function loadMoreObjects({ reset = false } = {}) {
+      if (objectPagination.loading) {
+        return;
+      }
+      if (!reset && !objectPagination.hasMore) {
+        return;
+      }
+      if (reset) {
+        objects = [];
+        objectPagination = { offset: 0, total: null, hasMore: true, loading: false, initialized: false, error: null };
+        renderObjectsList();
+      }
+
+      objectPagination.loading = true;
+      objectPagination.error = null;
+      renderObjectsList();
+      try {
+        const classParam = objectClassFilter !== '' ? `&class_id=${encodeURIComponent(objectClassFilter)}` : '';
+        const idParam = objectIdSearch !== '' ? `&object_id=${encodeURIComponent(objectIdSearch)}` : '';
+        const nameParam = objectNameSearch !== '' ? `&name=${encodeURIComponent(objectNameSearch)}` : '';
+        const response = await fetch(appendBuildingFilter(`/api/objects?limit=${OBJECTS_PAGE_SIZE}&offset=${objectPagination.offset}&min_observations=${minObservations}&sort=${objectSort}${classParam}${idParam}${nameParam}`));
+        const payload = await response.json();
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        objects = reset ? items : objects.concat(items);
+        objectPagination.offset = objects.length;
+        objectPagination.total = Number.isFinite(Number(payload.total)) ? Number(payload.total) : objects.length;
+        objectPagination.hasMore = Boolean(payload.has_more);
+        objectPagination.initialized = true;
+      } catch (error) {
+        console.error('Failed to load objects', error);
+        objectPagination.error = 'Failed to load objects.';
+      } finally {
+        objectPagination.loading = false;
+        renderObjectsList();
+        window.requestAnimationFrame(() => handleLazyPanelScroll('objects'));
+      }
+    }
+
+    function handleLazyPanelScroll(type) {
+      const panel = document.getElementById(type === 'scenes' ? 'scenes-panel' : 'objects-panel');
+      if (!panel || panel.offsetParent === null || panel.clientHeight === 0) {
+        return;
+      }
+      const remaining = panel.scrollHeight - panel.scrollTop - panel.clientHeight;
+      if (remaining > 240) {
+        return;
+      }
+      if (type === 'scenes') {
+        loadMoreScenes();
+      } else {
+        loadMoreObjects();
+      }
+    }
+
+    function isLiveMapTab(tab = currentTab) {
+      return tab === 'map' || tab === 'robot_view';
+    }
+
+    async function refreshLidarOccupancyMap({ rerender = true } = {}) {
+      if (mapRefreshInFlight) {
+        return;
+      }
+      const activeTab = currentTab;
+      if (!isLiveMapTab(activeTab) && !executionMatchesPlannedNavigation()) {
+        return;
+      }
+
+      mapRefreshInFlight = true;
+      try {
+        const cacheBust = Date.now();
+        const requests = [];
+        if (activeTab === 'robot_view' || activeTab === 'map') {
+          requests.push(
+            fetch(`/api/lidar_occupancy_map?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { lidarOccupancyMap = payload; })
+          );
+        }
+        if (activeTab === 'robot_view') {
+          requests.push(
+            fetch(`/api/slam/robot_pose?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.ok ? response.json() : null)
+              .then(payload => { if (payload) slamRobotPose = payload; })
+          );
+        }
+        if (activeTab === 'map') {
+          requests.push(
+            fetch(`/api/toolbox_map?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { toolboxMapSnapshot = payload; })
+          );
+          requests.push(
+            fetch(`/api/nav2_global_costmap?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { nav2GlobalCostmap = payload; })
+          );
+          requests.push(
+            fetch(`/api/toolbox_map/persistence?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { toolboxMapPersistence = payload; })
+          );
+          requests.push(
+            fetch(`/api/rooms?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { rooms = payload; })
+          );
+        }
+        if (activeTab === 'map') {
+          requests.push(
+            fetch(appendBuildingFilter(`/api/lidar_detection_markers?_=${cacheBust}`), { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { lidarDetectionMarkers = payload; })
+          );
+        }
+        if (activeTab === 'map') {
+          requests.push(
+            fetch(`/api/lidar_scan?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { lidarScanSnapshot = payload; })
+          );
+        }
+        if (activeTab === 'map' || executionMatchesPlannedNavigation()) {
+          requests.push(
+            fetch(`/api/navigation/status?_=${cacheBust}`, { cache: 'no-store' })
+              .then(response => response.json())
+              .then(payload => { navigationExecutionStatus = payload; })
+          );
+        }
+        await Promise.all(requests);
+        syncSelectedToolboxSavedMap();
+        if (rerender) {
+          if (currentTab === 'map') {
+            renderMapPanel();
+          }
+          if (currentTab === 'robot_view') {
+            renderRobotViewPanel();
+          }
+        }
+      } catch (error) {
+        console.error('Failed to refresh lidar occupancy map', error);
+      } finally {
+        mapRefreshInFlight = false;
+      }
+    }
+
+    function ensureMapRefreshLoop() {
+      if (mapRefreshTimer !== null) {
+        return;
+      }
+      mapRefreshTimer = window.setInterval(() => {
+        if (!isLiveMapTab() && !executionMatchesPlannedNavigation()) {
+          return;
+        }
+        refreshLidarOccupancyMap({ rerender: true });
+      }, 3000);
+    }
+
+    function clampOccupancyMapZoom(value) {
+      return Math.max(1, Math.min(4, Number(value) || 1));
+    }
+
+    function setOccupancyMapZoom(value) {
+      occupancyMapZoom = clampOccupancyMapZoom(value);
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+    }
+
+    function adjustOccupancyMapZoom(delta) {
+      setOccupancyMapZoom((Math.round(occupancyMapZoom * 10) + delta) / 10);
+    }
+
+    function handleOccupancyMapWheel(event) {
+      if (!event.ctrlKey) {
+        return;
+      }
+      event.preventDefault();
+      adjustOccupancyMapZoom(event.deltaY < 0 ? 1 : -1);
+    }
+
+    function renderOccupancyMapZoomControls() {
+      return `
+        <div class="zoom-toolbar">
+          <button class="btn btn-sm btn-outline-secondary" onclick="adjustOccupancyMapZoom(-1)">-</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="setOccupancyMapZoom(1)">Reset</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="adjustOccupancyMapZoom(1)">+</button>
+          <span class="zoom-label">zoom ${(occupancyMapZoom * 100).toFixed(0)}%</span>
+        </div>
+      `;
+    }
+
+    function renderPersistedDetectionImageToggle() {
+      return `
+        <div class="map-toolbar">
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="persisted-detection-images-toggle"
+              ${showPersistedDetectionImages ? 'checked' : ''}
+              onchange="togglePersistedDetectionImages(this.checked)"
+            />
+            <label class="form-check-label" for="persisted-detection-images-toggle">
+              Show persisted detection images
+            </label>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderToolboxMapSelectionControls() {
+      const savedMaps = Array.isArray(toolboxMapPersistence?.maps) ? toolboxMapPersistence.maps : [];
+      const savedMapOptions = savedMaps.length
+        ? `<option value="" ${selectedToolboxSavedMapName ? '' : 'selected'}>— select a building —</option>` + savedMaps.map(map => `<option value="${escapeHtml(map.name)}" ${map.name === selectedToolboxSavedMapName ? 'selected' : ''}>${escapeHtml(map.building_name || map.name)}</option>`).join('')
+        : '<option value="">No saved maps yet</option>';
+      const activeMode = toolboxMapPersistence?.active_mode || 'idle';
+      const isRecording = activeMode === 'recording';
+
+      return `
+        <div class="map-toolbar">
+          ${!isRecording ? '<button class="btn btn-sm btn-primary" onclick="createNewMap()">Record new map</button>' : ''}
+          ${isRecording ? '<button class="btn btn-sm btn-outline-primary" onclick="saveCurrentToolboxMap()">Save map</button>' : ''}
+          ${isRecording ? '<button class="btn btn-sm btn-outline-danger" onclick="cancelRecording()">Cancel</button>' : ''}
+          <label class="form-label m-0" for="map-building-select">Building</label>
+          <select id="map-building-select" class="form-select form-select-sm" style="width: auto; min-width: 220px;" onchange="onToolboxSavedMapSelectionChanged(this.value)">
+            ${savedMapOptions}
+          </select>
+          <div class="dropdown ms-auto">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              Actions
+            </button>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="#" onclick="toggleCustomPathMode(); return false;">Plan path between two points</a></li>
+              <li><a class="dropdown-item" href="#" onclick="toggleClickToPlanMode(); return false;">Plan path from robot to clicked point</a></li>
+              <li><a class="dropdown-item text-danger" href="#" onclick="clearDetectionsOnly(); return false;">Clear detections</a></li>
+              <li><a class="dropdown-item text-danger" href="#" onclick="clearScenesForBuilding(); return false;">Clear all scenes</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="#" onclick="deleteSavedToolboxMap(); return false;">Delete building</a></li>
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderMapResetButton() {
+      return `
+        <div class="map-toolbar">
+          <button class="btn btn-sm btn-outline-danger" onclick="resetMapAndDetections()">Reset map and detections</button>
+        </div>
+      `;
+    }
+
+    function shouldShowFreshEmptyMap() {
+      return Number(newMapStartedAt) > 0 && (Date.now() - Number(newMapStartedAt)) < NEW_MAP_EMPTY_VIEW_MS;
+    }
+
+    function renderFreshEmptyMapNotice() {
+      return `
+        <div class="map-card">
+          <h5>New Map Started</h5>
+          <div class="text-muted">
+            Starting a fresh map. The previous map has been cleared from the view, and new mapping data will appear here as it is rebuilt.
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecordingStatusNotice({ activeMode, toolboxAvailable, toolboxStats, toolboxStatus }) {
+      if (activeMode === 'frozen') {
+        return '';
+      }
+      if (activeMode === 'idle') {
+        return `
+          <div class="map-legend" style="margin-bottom: 12px;">
+            <div><strong>Live map preview is available.</strong> Click <strong>Record new map</strong> to start saving a recording, or select and load a saved building.</div>
+          </div>
+        `;
+      }
+      const observedCells = Number(toolboxStats?.observed_cells || 0);
+      const statusText = toolboxAvailable
+        ? (observedCells > 0
+            ? `Recording is active. ${observedCells} observed cells have been mapped so far.`
+            : 'Recording is active. Waiting for the first observed cells to appear.')
+        : `Recording is active. ${toolboxStatus || 'Waiting for live map data.'}`;
+      return `
+        <div class="map-legend" style="margin-bottom: 12px;">
+          <div><strong>Recording in progress.</strong> ${escapeHtml(statusText)}</div>
+        </div>
+      `;
+    }
+
+    function syncSelectedToolboxSavedMap() {
+      const maps = Array.isArray(toolboxMapPersistence?.maps) ? toolboxMapPersistence.maps : [];
+      if (!maps.length) {
+        selectedToolboxSavedMapName = '';
+        return;
+      }
+      // Preserve user selection while an explicit action is in progress.
+      if (toolboxMapActionInProgress && selectedToolboxSavedMapName && maps.some(map => map.name === selectedToolboxSavedMapName)) {
+        return;
+      }
+      const candidates = [
+        selectedToolboxSavedMapName,
+        toolboxMapPersistence?.active_name,
+        toolboxMapPersistence?.autoload_name,
+      ].filter(Boolean);
+      const nextName = candidates.find(name => maps.some(map => map.name === name));
+      selectedToolboxSavedMapName = nextName || '';
+    }
+
+    function activeRoomMapName() {
+      return toolboxMapPersistence?.active_mode === 'frozen'
+        ? String(toolboxMapPersistence?.active_name || toolboxMapSnapshot?.name || '')
+        : '';
+    }
+
+    function activeMapRooms() {
+      const mapName = activeRoomMapName();
+      const items = Array.isArray(rooms) ? rooms : [];
+      if (!mapName) {
+        return items.filter(room => !room.map_name);
+      }
+      return items.filter(room => room.map_name === mapName);
+    }
+
+    function roomsApiUrl() {
+      const mapName = activeRoomMapName();
+      const params = new URLSearchParams({ _: String(Date.now()) });
+      if (mapName) {
+        params.set('map_name', mapName);
+      }
+      return `/api/rooms?${params.toString()}`;
+    }
+
+    async function onToolboxSavedMapSelectionChanged(value) {
+      selectedToolboxSavedMapName = String(value || '');
+      if (selectedToolboxSavedMapName) {
+        await loadSavedToolboxMap({ skipConfirm: true });
+      } else {
+        if (currentTab === 'map') {
+          renderMapPanel();
+        }
+      }
+    }
+
+    async function requestToolboxMapAction(action, { name = '', buildingName = '' } = {}) {
+      const params = new URLSearchParams();
+      if (name) {
+        params.set('name', name);
+      }
+      if (buildingName) {
+        params.set('building_name', buildingName);
+      }
+      const response = await fetch(`/api/toolbox_map/${action}?${params.toString()}`, { method: 'POST' });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || `${action} failed.`);
+      }
+      const persistenceResponse = await fetch(`/api/toolbox_map/persistence?_=${Date.now()}`, { cache: 'no-store' });
+      if (persistenceResponse.ok) {
+        toolboxMapPersistence = await persistenceResponse.json();
+      }
+      const roomsResponse = await fetch(roomsApiUrl(), { cache: 'no-store' });
+      if (roomsResponse.ok) {
+        rooms = await roomsResponse.json();
+      }
+      syncSelectedToolboxSavedMap();
+      // Ensure the map panel re-renders with fresh data even if refreshLidarOccupancyMap
+      // is skipped because mapRefreshInFlight is true (concurrent poll).
+      const mapResponse = await fetch(`/api/toolbox_map?_=${Date.now()}`, { cache: 'no-store' });
+      if (mapResponse.ok) {
+        toolboxMapSnapshot = await mapResponse.json();
+      }
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+      await refreshLidarOccupancyMap({ rerender: false });
+      return payload;
+    }
+
+    async function saveCurrentToolboxMap() {
+      const selectedSavedMap = Array.isArray(toolboxMapPersistence?.maps)
+        ? toolboxMapPersistence.maps.find(map => map.name === selectedToolboxSavedMapName)
+        : null;
+      const suggestedBuildingName =
+        selectedSavedMap?.building_name ||
+        toolboxMapPersistence?.autoload_building_name ||
+        toolboxMapPersistence?.default_name ||
+        'default_map';
+      const requestedBuildingName = window.prompt('Save the current map as building:', suggestedBuildingName);
+      if (requestedBuildingName === null) {
+        return;
+      }
+      toolboxMapActionInProgress = true;
+      try {
+        await requestToolboxMapAction('save', { buildingName: requestedBuildingName });
+      } catch (error) {
+        window.alert(error.message || 'Saving the toolbox map failed.');
+      } finally {
+        toolboxMapActionInProgress = false;
+      }
+    }
+
+    async function loadSavedToolboxMap(options = {}) {
+      if (!selectedToolboxSavedMapName) {
+        window.alert('No saved slam_toolbox map is available yet.');
+        return;
+      }
+      const selectedSavedMap = Array.isArray(toolboxMapPersistence?.maps)
+        ? toolboxMapPersistence.maps.find(map => map.name === selectedToolboxSavedMapName)
+        : null;
+      if (!options?.skipConfirm) {
+        const confirmed = window.confirm(
+          `Load "${selectedSavedMap?.building_name || selectedToolboxSavedMapName}" as a frozen map? The map will stop updating until you record a new one.`
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+      toolboxMapActionInProgress = true;
+      try {
+        const payload = await requestToolboxMapAction('load', { name: selectedToolboxSavedMapName });
+        if (payload?.message) {
+          window.alert(payload.message);
+        }
+      } catch (error) {
+        window.alert(error.message || 'Loading the saved toolbox map failed.');
+      } finally {
+        toolboxMapActionInProgress = false;
+      }
+    }
+
+    async function deleteSavedToolboxMap() {
+      if (!selectedToolboxSavedMapName) {
+        window.alert('No saved map is selected.');
+        return;
+      }
+      const selectedSavedMap = Array.isArray(toolboxMapPersistence?.maps)
+        ? toolboxMapPersistence.maps.find(map => map.name === selectedToolboxSavedMapName)
+        : null;
+      const confirmed = window.confirm(
+        `Delete the saved map for building "${selectedSavedMap?.building_name || selectedToolboxSavedMapName}"? This cannot be undone.`
+      );
+      if (!confirmed) {
+        return;
+      }
+      toolboxMapActionInProgress = true;
+      try {
+        const payload = await requestToolboxMapAction('delete', { name: selectedToolboxSavedMapName });
+        if (payload?.message) {
+          window.alert(payload.message);
+        }
+      } catch (error) {
+        window.alert(error.message || 'Deleting the saved toolbox map failed.');
+      } finally {
+        toolboxMapActionInProgress = false;
+      }
+    }
+
+    async function deleteSelectedBuildingAndSwitch() {
+      const building = selectedToolboxSavedMapName || window.getSelectedBuilding?.();
+      if (!building) {
+        window.alert('No building is selected. Please select a building from the Map tab first.');
+        return;
+      }
+
+      const savedMaps = Array.isArray(toolboxMapPersistence?.maps) ? toolboxMapPersistence.maps : [];
+      const isToolboxSelection = !!selectedToolboxSavedMapName;
+      let nextName = null;
+
+      if (isToolboxSelection) {
+        const currentIndex = savedMaps.findIndex(map => map.name === building);
+        const nextMap = savedMaps[currentIndex + 1] || savedMaps[currentIndex - 1] || null;
+        nextName = nextMap ? nextMap.name : null;
+      } else {
+        try {
+          const res = await fetch('/api/buildings');
+          if (res.ok) {
+            const buildings = await res.json();
+            const names = buildings.map(b => b.name);
+            const currentIndex = names.indexOf(building);
+            nextName = names[currentIndex + 1] || names[currentIndex - 1] || null;
+          }
+        } catch (e) {
+          console.warn('Failed to fetch buildings list:', e);
+        }
+      }
+
+      const selectedSavedMap = savedMaps.find(map => map.name === building);
+      const displayName = selectedSavedMap?.building_name || building;
+
+      const confirmed = window.confirm(
+        `Delete the building "${displayName}"? This removes all map files, scenes, objects, interactions, rooms, and navigation decisions. This cannot be undone.`
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      toolboxMapActionInProgress = true;
+      try {
+        const clearResponse = await fetch(`/api/map/clear_data?name=${encodeURIComponent(building)}`, { method: 'POST' });
+        const clearPayload = await clearResponse.json();
+        if (!clearResponse.ok) {
+          throw new Error(clearPayload.detail || 'Clear map data failed.');
+        }
+
+        if (isToolboxSelection) {
+          try {
+            await requestToolboxMapAction('delete', { name: building });
+          } catch (deleteError) {
+            if (!String(deleteError.message || '').toLowerCase().includes('not found')) {
+              throw deleteError;
+            }
+          }
+        }
+
+        window.alert(clearPayload.message || 'Building deleted.');
+
+        if (nextName) {
+          selectedToolboxSavedMapName = nextName;
+          try {
+            await requestToolboxMapAction('load', { name: nextName });
+          } catch (loadError) {
+            console.warn('Failed to auto-load next building:', loadError);
+          }
+          try {
+            localStorage.setItem('bordsupr_selected_building', nextName);
+          } catch (e) {}
+        } else {
+          selectedToolboxSavedMapName = '';
+          try {
+            localStorage.removeItem('bordsupr_selected_building');
+          } catch (e) {}
+        }
+
+        window.location.reload();
+      } catch (error) {
+        window.alert(error.message || 'Deleting the building failed.');
+      } finally {
+        toolboxMapActionInProgress = false;
+      }
+    }
+
+    function buildRoomDraftFromPoints(name, points) {
+      return {
+        name: String(name || '').trim(),
+        x1: Number(points[0].x),
+        y1: Number(points[0].y),
+        x2: Number(points[1].x),
+        y2: Number(points[1].y),
+        x3: Number(points[2].x),
+        y3: Number(points[2].y),
+        x4: Number(points[3].x),
+        y4: Number(points[3].y),
+      };
+    }
+
+    function startRoomMarking() {
+      const activeMode = toolboxMapPersistence?.active_mode || 'idle';
+      if (activeMode !== 'frozen') {
+        window.alert('Save and freeze a map first, then mark rooms on that saved map.');
+        return;
+      }
+      roomMarkingMode = !roomMarkingMode;
+      roomDraftPoints = [];
+      roomDraftName = '';
+      roomDraftError = null;
+      if (!roomMarkingMode) {
+        roomDrafts = [];
+      } else {
+        roomDrafts = Array.isArray(rooms) ? rooms.map(room => ({
+          name: room.name,
+          x1: Number(room.x1),
+          y1: Number(room.y1),
+          x2: Number(room.x2),
+          y2: Number(room.y2),
+          x3: room.x3 != null ? Number(room.x3) : null,
+          y3: room.y3 != null ? Number(room.y3) : null,
+          x4: room.x4 != null ? Number(room.x4) : null,
+          y4: room.y4 != null ? Number(room.y4) : null,
+        })) : [];
+        customPathMode = false;
+        customPathPoints = [];
+        customPathError = null;
+      }
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+    }
+
+    function clearRoomDraftPoints() {
+      roomDraftPoints = [];
+      roomDraftError = null;
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+    }
+
+    function updateRoomDraftName(value) {
+      roomDraftName = String(value || '');
+    }
+
+    function addDraftRoom() {
+      if (roomDraftPoints.length < 4) {
+        roomDraftError = 'Select 4 corners first.';
+        if (currentTab === 'map') renderMapPanel();
+        return;
+      }
+      const fallbackName = `Room ${roomDrafts.length + 1}`;
+      const name = roomDraftName.trim() || fallbackName;
+      if (!name) {
+        roomDraftError = 'Enter a room name.';
+        if (currentTab === 'map') renderMapPanel();
+        return;
+      }
+      roomDrafts = [...roomDrafts, buildRoomDraftFromPoints(name, roomDraftPoints)];
+      roomDraftPoints = [];
+      roomDraftName = '';
+      roomDraftError = null;
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+    }
+
+    async function saveMarkedRooms() {
+      const activeMode = toolboxMapPersistence?.active_mode || 'idle';
+      const activeMapName = toolboxMapPersistence?.active_name || '';
+      if (activeMode !== 'frozen' || !activeMapName) {
+        window.alert('Load or save a frozen map first, then save its rooms.');
+        return;
+      }
+      try {
+        const response = await fetch('/api/rooms/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ map_name: activeMapName, rooms: roomDrafts }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Saving rooms failed.');
+        }
+        rooms = Array.isArray(payload.rooms)
+          ? payload.rooms.map(room => ({ ...room, map_name: activeMapName }))
+          : [];
+        roomMarkingMode = false;
+        roomDraftPoints = [];
+        roomDraftName = '';
+        roomDraftError = null;
+        roomDrafts = [];
+        if (currentTab === 'map') {
+          renderMapPanel();
+        }
+      } catch (error) {
+        roomDraftError = error.message || 'Saving rooms failed.';
+        if (currentTab === 'map') {
+          renderMapPanel();
+        }
+      }
+    }
+
+    async function createNewMap() {
+      const confirmed = window.confirm(
+        'Step 1: start recording a new map from scratch? This clears the current working map, persisted detections, frozen-map selection, and planned navigation state.'
+      );
+      if (!confirmed) {
+        return;
+      }
+      newMapStartedAt = Date.now();
+      await resetMapAndDetections({ skipConfirm: true, mode: 'recording' });
+    }
+
+    async function cancelRecording() {
+      const confirmed = window.confirm(
+        'Cancel the current recording without saving? This discards all unsaved map data and cannot be undone.'
+      );
+      if (!confirmed) {
+        return;
+      }
+      newMapStartedAt = 0;
+      await resetMapAndDetections({ skipConfirm: true });
+    }
+
+    function togglePersistedDetectionImages(checked) {
+      showPersistedDetectionImages = Boolean(checked);
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+    }
+
+    async function resetMapAndDetections(options = {}) {
+      const skipConfirm = Boolean(options?.skipConfirm);
+      const mode = options?.mode || '';
+      if (!skipConfirm) {
+        const confirmed = window.confirm(
+          'Reset the stored map and all persisted detections? This clears the current map files, saved detections, and planned navigation state.'
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      try {
+        const resetUrl = mode ? `/api/map/reset?mode=${encodeURIComponent(mode)}` : '/api/map/reset';
+        const response = await fetch(resetUrl, { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Reset failed.');
+        }
+
+        plannedNavigation = null;
+        navigationExecutionStatus = { available: false, state: 'idle' };
+        lidarOccupancyMap = { available: false, reason: 'map_reset' };
+        toolboxMapSnapshot = { available: false, reason: 'map_reset' };
+        nav2GlobalCostmap = { available: false, reason: 'map_reset' };
+        toolboxMapPersistence = { available: false, maps: [], status: { state: 'idle' } };
+        lidarDetectionMarkers = [];
+        lidarScanSnapshot = { available: false, reason: 'map_reset' };
+        observationTopoObservations = [];
+        rooms = [];
+        roomMarkingMode = false;
+        roomDraftPoints = [];
+        roomDraftName = '';
+        roomDrafts = [];
+        roomDraftError = null;
+        scenePagination = { offset: 0, total: null, hasMore: true, loading: false, initialized: false, error: null };
+        objectPagination = { offset: 0, total: null, hasMore: true, loading: false, initialized: false, error: null };
+        scenes = [];
+        objects = [];
+        interactions = [];
+        selectedToolboxSavedMapName = '';
+
+        if (!skipConfirm) {
+          newMapStartedAt = 0;
+        }
+        tabLoaded.clear();
+        await loadTabData(currentTab);
+      } catch (error) {
+        newMapStartedAt = 0;
+        window.alert(error.message || 'Reset failed.');
+      }
+    }
+
+    async function clearDetectionsOnly() {
+      const confirmed = window.confirm('Clear all persisted detections? This removes stored observation coordinates from the database but keeps the map and rooms intact.');
+      if (!confirmed) {
+        return;
+      }
+      try {
+        const response = await fetch('/api/detections/clear', { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Clear detections failed.');
+        }
+        lidarDetectionMarkers = [];
+        observationTopoObservations = [];
+        if (currentTab === 'map') {
+          renderMapPanel();
+        }
+      } catch (error) {
+        window.alert(error.message || 'Clear detections failed.');
+      }
+    }
+
+    async function clearScenesForBuilding() {
+      const building = selectedToolboxSavedMapName || window.getSelectedBuilding?.();
+      if (!building) {
+        window.alert('No building is selected. Please select a building from the Map tab first.');
+        return;
+      }
+      const confirmed = window.confirm(`Clear all scenes for "${building}"? This removes all scene records, their images, and linked object observations. Rooms, navigation decisions, and the map itself are kept.`);
+      if (!confirmed) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/scenes/clear?building=${encodeURIComponent(building)}`, { method: 'POST' });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Clear scenes failed.');
+        }
+        window.alert(payload.message || `Cleared scenes for "${building}".`);
+        if (currentTab === 'scenes') {
+          renderScenesTable();
+        }
+      } catch (error) {
+        window.alert(error.message || 'Clear scenes failed.');
+      }
+    }
+
+    async function deleteScene(sceneId) {
+      if (!window.confirm(`Delete scene ${sceneId}? This cannot be undone.`)) {
+        return;
+      }
+      try {
+        const response = await fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, { method: 'DELETE' });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Delete scene failed.');
+        }
+        // Remove the deleted scene from the local array and re-render
+        const idx = scenes.findIndex(s => s.id === sceneId);
+        if (idx !== -1) {
+          scenes.splice(idx, 1);
+        }
+        renderScenesTable();
+        // If the details panel is showing this scene, clear it
+        const detailsEl = document.getElementById('details-content');
+        if (detailsEl && detailsEl.innerHTML.includes(`scene-${sceneId}`)) {
+          detailsEl.innerHTML = '<div class="text-muted">Select a scene to view details.</div>';
+        }
+      } catch (error) {
+        window.alert(error.message || 'Delete scene failed.');
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function jsStringLiteral(value) {
+      return JSON.stringify(String(value ?? ''));
+    }
+
+    function formatNamedObject(name, objectId) {
+      const trimmed = typeof name === 'string' ? name.trim() : '';
+      if (trimmed) {
+        return `<strong>${escapeHtml(trimmed)}</strong> <span class="muted">(${escapeHtml(objectId)})</span>`;
+      }
+      return `<strong>${escapeHtml(objectId)}</strong>`;
+    }
+
+    function sceneOriginalImageUrl(sceneId) {
+      if (sceneId === null || sceneId === undefined || sceneId === '') {
+        return null;
+      }
+      return `/api/scenes/${encodeURIComponent(sceneId)}/original_image`;
+    }
+
+    function sceneStitchedImageUrl(sceneId) {
+      if (sceneId === null || sceneId === undefined || sceneId === '') {
+        return null;
+      }
+      return `/api/scenes/${encodeURIComponent(sceneId)}/stitched_image`;
+    }
+
+    function personHasStoredFace(person) {
+      return Number(person?.face_observation_count ?? 0) >= 1;
+    }
+
+    function getVisiblePersons() {
+      return filterPersonsWithFace ? persons.filter(personHasStoredFace) : persons;
+    }
+
+    function resetRecognizedPersonDetails(message = 'Select a recognized person.') {
+      document.getElementById('details-panel').style.display = '';
+      document.getElementById('detailTitle').textContent = 'Details';
+      document.getElementById('details').textContent = message;
+    }
+
+    function togglePersonsWithFaceFilter() {
+      filterPersonsWithFace = Boolean(document.getElementById('filter-persons-with-face')?.checked);
+      const visiblePersons = getVisiblePersons();
+      renderPersonsList();
+      if (selectedPersonId && !visiblePersons.some((person) => String(person.id) === String(selectedPersonId))) {
+        selectedPersonId = null;
+        if (currentTab === 'persons') {
+          resetRecognizedPersonDetails(visiblePersons.length
+            ? 'Select a recognized person.'
+            : 'No recognized person with at least one stored face matches the current filter.');
+        }
+      }
+    }
+
+    async function updateObjectName(objectId, rawName) {
+      const response = await fetch(`/api/objects/${encodeURIComponent(objectId)}/name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: (rawName || '').trim() || null }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save name (${response.status})`);
+      }
+      const result = await response.json();
+      const savedName = result.name ?? null;
+      objects = objects.map((item) => String(item.id) === String(objectId) ? { ...item, name: savedName } : item);
+      persons = persons.map((item) => String(item.id) === String(objectId) ? { ...item, name: savedName } : item);
+      renderObjectsList();
+      renderPersonsList();
+      return savedName;
+    }
+
+    async function saveObjectName(objectId, inputId) {
+      const input = document.getElementById(inputId);
+      if (!input) {
+        return;
+      }
+      try {
+        const savedName = await updateObjectName(objectId, input.value);
+        input.value = savedName || '';
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Failed to save object name.');
+      }
+    }
+
+    async function deleteObservation(observationId, objectId) {
+      if (!window.confirm(`Delete observation ${observationId}? This cannot be undone.`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/observations/${encodeURIComponent(observationId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.deleted_orphaned_objects > 0) {
+          alert(`Observation ${observationId} deleted. The cluster was removed because it had no remaining observations.`);
+          await loadObjects();
+          document.getElementById('details').innerHTML = '<div class="text-muted">The cluster was removed because it had no remaining observations.</div>';
+        } else {
+          await showObject(objectId);
+        }
+      } catch (err) {
+        alert(`Failed to delete observation: ${err.message}`);
+      }
+    }
+
+    async function saveClusterObjectName(objectId, inputId) {
+      await saveObjectName(objectId, inputId);
+    }
+
+    function setImageModalState({ title = '', status = '', showNavigateButton = false, navigateBusy = false } = {}) {
+      const titleEl = document.getElementById('image-modal-title');
+      const statusEl = document.getElementById('image-modal-status');
+      const navigateBtn = document.getElementById('image-modal-navigate-btn');
+      if (titleEl) {
+        titleEl.textContent = title || '';
+      }
+      if (statusEl) {
+        statusEl.textContent = status || '';
+      }
+      if (navigateBtn) {
+        navigateBtn.style.display = showNavigateButton ? '' : 'none';
+        navigateBtn.disabled = Boolean(navigateBusy);
+        navigateBtn.textContent = navigateBusy ? 'Planning…' : 'Navigate here';
+      }
+    }
+
+    function openImageModal(url, title = '') {
+      const modal = document.getElementById('image-modal');
+      const img = document.getElementById('image-modal-img');
+      if (!modal || !img || !url) {
+        return;
+      }
+      imageModalContext = null;
+      img.src = url;
+      setImageModalState({ title, status: '', showNavigateButton: false, navigateBusy: false });
+      modal.classList.add('open');
+    }
+
+    function openPersistedDetectionModal(url, title = '', observationId = null) {
+      const modal = document.getElementById('image-modal');
+      const img = document.getElementById('image-modal-img');
+      if (!modal || !img || !url) {
+        return;
+      }
+      imageModalContext = {
+        type: 'persisted_detection',
+        observationId,
+        title,
+        imageUrl: url,
+      };
+      img.src = url;
+      setImageModalState({
+        title,
+        status: plannedNavigation && plannedNavigation.observation?.id === observationId
+          ? 'Planned preview path is shown on the occupancy map.'
+          : 'Plan a path preview from the current robot pose to this saved detection pose.',
+        showNavigateButton: Boolean(observationId),
+        navigateBusy: false,
+      });
+      modal.classList.add('open');
+    }
+
+    async function planNavigationToModalDetection() {
+      if (!imageModalContext || imageModalContext.type !== 'persisted_detection' || !imageModalContext.observationId) {
+        return;
+      }
+
+      setImageModalState({
+        title: imageModalContext.title,
+        status: 'Planning a path on the occupancy map…',
+        showNavigateButton: true,
+        navigateBusy: true,
+      });
+
+      try {
+        const response = await fetch(`/api/lidar_detection_markers/${imageModalContext.observationId}/plan`, {
+          method: 'POST',
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Planning failed');
+        }
+
+        plannedNavigation = payload;
+        closeImageModal();
+        showTab('map');
+        renderMapPanel();
+      } catch (error) {
+        setImageModalState({
+          title: imageModalContext.title,
+          status: error.message || 'Planning failed.',
+          showNavigateButton: true,
+          navigateBusy: false,
+        });
+      }
+    }
+
+    function closeImageModal() {
+      const modal = document.getElementById('image-modal');
+      const img = document.getElementById('image-modal-img');
+      if (!modal || !img) {
+        return;
+      }
+      modal.classList.remove('open');
+      img.removeAttribute('src');
+      imageModalContext = null;
+      setImageModalState({ title: '', status: '', showNavigateButton: false, navigateBusy: false });
+    }
+
+    function clearPlannedNavigation() {
+      plannedNavigation = null;
+      if (currentTab === 'map') {
+        renderMapPanel();
+      }
+    }
+
+    function executionMatchesPlannedNavigation() {
+      if (!plannedNavigation || !navigationExecutionStatus || !navigationExecutionStatus.available) {
+        return false;
+      }
+      const plannedObservationId = plannedNavigation.observation?.id ?? null;
+      const executedObservationId = navigationExecutionStatus.observation?.id ?? null;
+      return plannedObservationId !== null && plannedObservationId === executedObservationId;
+    }
+
+    function navigationExecutionSummary() {
+      if (!navigationExecutionStatus || !navigationExecutionStatus.available) {
+        return 'No active navigation execution request.';
+      }
+      const state = String(navigationExecutionStatus.state || 'unknown');
+      const message = navigationExecutionStatus.message ? ` ${navigationExecutionStatus.message}` : '';
+      return `Execution state: ${state}.${message}`;
+    }
+
+    async function acceptPlannedNavigation() {
+      if (!plannedNavigation) {
+        return;
+      }
+      if (!plannedNavigation.navigation_execution?.available) {
+        renderMapPanel();
+        return;
+      }
+
+      const status = navigationExecutionStatus || {};
+      if (status.available && ['queued', 'running'].includes(String(status.state || ''))) {
+        renderMapPanel();
+        return;
+      }
+
+      navigationExecutionStatus = {
+        available: true,
+        state: 'submitting',
+        message: 'Submitting accepted trajectory to the robot executor.',
+        observation: plannedNavigation.observation,
+      };
+      renderMapPanel();
+
+      try {
+        const response = await fetch('/api/navigation/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(plannedNavigation),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Failed to submit navigation request.');
+        }
+        navigationExecutionStatus = payload;
+      } catch (error) {
+        navigationExecutionStatus = {
+          available: true,
+          state: 'failed',
+          message: error.message || 'Failed to submit navigation request.',
+          observation: plannedNavigation.observation,
+        };
+      }
+
+      renderMapPanel();
+    }
+
+    function rememberOccupancyMapScroll(viewportKey) {
+      const viewport = document.getElementById(`zoom-viewport-${viewportKey}`);
+      if (!viewport) {
+        return;
+      }
+      occupancyMapScrollState[viewportKey] = {
+        left: viewport.scrollLeft,
+        top: viewport.scrollTop,
+      };
+    }
+
+    function restoreOccupancyMapScroll(viewportKey) {
+      const saved = occupancyMapScrollState[viewportKey];
+      if (!saved) {
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        const viewport = document.getElementById(`zoom-viewport-${viewportKey}`);
+        if (!viewport) {
+          return;
+        }
+        viewport.scrollLeft = saved.left;
+        viewport.scrollTop = saved.top;
+      });
+    }
+
+    function showTab(tab) {
+      currentTab = tab;
+      loadTabData(tab);
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.replaceState({}, '', url);
+      document.getElementById('tab-scenes').classList.toggle('active', tab === 'scenes');
+      document.getElementById('tab-objects').classList.toggle('active', tab === 'objects');
+      document.getElementById('tab-persons').classList.toggle('active', tab === 'persons');
+      document.getElementById('tab-interactions').classList.toggle('active', tab === 'interactions');
+      document.getElementById('tab-map').classList.toggle('active', tab === 'map');
+      document.getElementById('tab-robot-view').classList.toggle('active', tab === 'robot_view');
+      document.getElementById('scenes-panel').style.display = tab === 'scenes' ? '' : 'none';
+      document.getElementById('objects-panel').style.display = tab === 'objects' ? '' : 'none';
+      document.getElementById('persons-panel').style.display = tab === 'persons' ? '' : 'none';
+      document.getElementById('interactions-panel').style.display = tab === 'interactions' ? '' : 'none';
+      document.getElementById('map-panel').style.display = tab === 'map' ? '' : 'none';
+      document.getElementById('robot-view-panel').style.display = tab === 'robot_view' ? '' : 'none';
+      document.getElementById('details-panel').style.display = tab === 'scenes' || tab === 'objects' || tab === 'persons' || tab === 'interactions' ? '' : 'none';
+      document.getElementById('details').innerHTML = tab === 'scenes'
+        ? 'Select a scene.'
+        : (tab === 'objects' ? 'Select an object cluster.' : (tab === 'persons' ? 'Select a recognized person.' : 'Select an interaction.'));
+      document.getElementById('detailTitle').textContent = 'Details';
+      if (tab === 'map') {
+        renderMapPanel();
+        refreshLidarOccupancyMap({ rerender: true });
+      } else if (tab === 'robot_view') {
+        renderRobotViewPanel();
+        refreshLidarOccupancyMap({ rerender: true });
+      } else if (tab === 'scenes' || tab === 'objects') {
+        window.requestAnimationFrame(() => handleLazyPanelScroll(tab));
+      }
+      updateEarlierSceneButton();
+    }
+
+    function renderScenesTable() {
+      const el = document.getElementById('scenes-table');
+      if (!scenePagination.initialized && scenePagination.loading) {
+        el.innerHTML = '<div class="text-muted">Loading scenes…</div>';
+        return;
+      }
+      if (scenePagination.error && !scenes.length) {
+        el.innerHTML = `<div class="text-danger">${scenePagination.error}</div>`;
+        return;
+      }
+      if (!scenes.length) {
+        el.innerHTML = '<div class="text-muted">No scenes found.</div>';
+        return;
+      }
+      const filterEl = document.getElementById('filter-with-description');
+      const filterActive = filterEl && filterEl.checked;
+      // Sort scenes by timestamp descending
+      const sortedScenes = [...scenes]
+        .filter(s => !filterActive || (s.caption && s.caption.trim()))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      if (!sortedScenes.length) {
+        el.innerHTML = '<div class="text-muted">No scenes with a description found.</div>';
+        return;
+      }
+      el.innerHTML = `
+        <table class="table table-striped table-hover align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Caption</th>
+              <th>Objects</th>
+              <th>Timestamp</th>
+              <th>X</th>
+              <th>Y</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sortedScenes.map(s => `
+              <tr style="cursor:pointer" onclick="focusScene(${s.id})">
+                <td>${s.id}</td>
+                <td>${s.caption || '(no caption)'}</td>
+                <td>${(s.objects && s.objects.length)
+                  ? s.objects.map(o => `${escapeHtml(o.name || o.class_name || ('object ' + o.object_id))}${o.count > 1 ? ' \u00d7' + o.count : ''}`).join(', ')
+                  : '<span class="text-muted">\u2014</span>'}</td>
+                <td>${new Date(s.timestamp).toLocaleString()}</td>
+                <td>${s.x ?? '-'}</td>
+                <td>${s.y ?? '-'}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); focusScene(${s.id})">Details</button>
+                  <button class="btn btn-sm btn-outline-danger ms-1" onclick="event.stopPropagation(); deleteScene(${s.id})">Delete</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="text-muted small">
+          ${renderPagedCountLabel(scenes, scenePagination, 'scenes')}
+          ${scenePagination.loading ? ' Loading more…' : ''}
+          ${scenePagination.hasMore && !scenePagination.loading ? ' Scroll to load more.' : ''}
+          ${scenePagination.error ? ` ${scenePagination.error}` : ''}
+        </div>
+      `;
+    }
+
+    function renderObjectsList() {
+      const el = document.getElementById('objects-list');
+      if (!objectPagination.initialized && objectPagination.loading) {
+        el.innerHTML = '<div class="text-muted">Loading objects…</div>';
+        return;
+      }
+      if (objectPagination.error && !objects.length) {
+        el.innerHTML = `<div class="text-danger">${objectPagination.error}</div>`;
+        return;
+      }
+      if (!objects.length) {
+        el.innerHTML = '<div class="text-muted">No objects found.</div>';
+        return;
+      }
+      el.innerHTML = `
+        ${objects.map(o => {
+          const inputId = `object-name-${String(o.id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+          return `
+        <div class="item" onclick="showObject('${o.id}')">
+          <div>${formatNamedObject(o.name, o.id)}</div>
+          <div class="muted">latest observation yolo track id: ${o.yolo_track_id ?? '-'}</div>
+          <div>class: ${o.class_name ? `${o.class_name} (${o.class_id})` : (o.class_id ?? '-')}</div>
+          <div class="muted">observations: ${o.observation_count}</div>
+          <div class="muted">max confidence: ${o.max_confidence !== null && o.max_confidence !== undefined ? (o.max_confidence * 100).toFixed(1) + '%' : '-'}</div>
+          <div class="muted">interactions: ${o.interaction_count ?? 0}</div>
+          <div class="muted">recognized by face: ${o.recognized_observation_count ?? 0}</div>
+          <div class="muted">last seen: ${o.last_seen_at ? new Date(o.last_seen_at).toLocaleString() : '-'}</div>
+          <div class="d-flex gap-2 align-items-center flex-wrap mt-2" onclick="event.stopPropagation()">
+            <input id="${inputId}" class="form-control form-control-sm" type="text" value="${escapeHtml(o.name || '')}" placeholder="Optional object name">
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="saveObjectName('${o.id}', '${inputId}')">Save</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="document.getElementById('${inputId}').value=''; saveObjectName('${o.id}', '${inputId}')">Clear</button>
+          </div>
+        </div>
+        `;
+        }).join('')}
+        <div class="text-muted small">
+          ${renderPagedCountLabel(objects, objectPagination, 'objects')}
+          ${objectPagination.loading ? ' Loading more…' : ''}
+          ${objectPagination.hasMore && !objectPagination.loading ? ' Scroll to load more.' : ''}
+          ${objectPagination.error ? ` ${objectPagination.error}` : ''}
+        </div>
+      `;
+    }
+
+    function renderPersonsList() {
+      const el = document.getElementById('persons-list');
+      const visiblePersons = getVisiblePersons();
+      if (!visiblePersons.length) {
+        el.innerHTML = filterPersonsWithFace
+          ? '<div class="text-muted">No recognized persons with at least one stored face found.</div>'
+          : '<div class="text-muted">No recognized persons found.</div>';
+        return;
+      }
+      el.innerHTML = visiblePersons.map(p => `
+        <div class="item person-card${String(p.id) === String(selectedPersonId) ? ' active' : ''}" onclick='showPerson(${jsStringLiteral(p.id)})'>
+          <div class="person-card-media-grid">
+            <div class="person-card-media">
+              ${sceneOriginalImageUrl(p.latest_scene_id)
+                ? `<img src="${escapeHtml(sceneOriginalImageUrl(p.latest_scene_id))}" alt="original ${escapeHtml(p.latest_scene_id)}" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'person-card-placeholder muted\\'>No original image</div>';">`
+                : '<div class="person-card-placeholder muted">No original image</div>'}
+            </div>
+            <div class="person-card-media">
+              ${p.image_url
+                ? `<img src="${escapeHtml(p.image_url)}" alt="person ${escapeHtml(p.id)}">`
+                : '<div class="person-card-placeholder muted">No face image</div>'}
+            </div>
+          </div>
+          <div class="person-card-body">
+            <div>${formatNamedObject(p.name, p.id)}</div>
+            <div class="muted">faces: ${p.face_observation_count ?? 0}</div>
+            <div class="muted">latest scene: ${p.latest_scene_id ?? '-'}</div>
+            <div class="muted">latest yolo track id: ${p.latest_yolo_track_id ?? '-'}</div>
+            <div class="muted">last seen: ${p.last_seen_at ? new Date(p.last_seen_at).toLocaleString() : '-'}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderInteractionsList() {
+      const el = document.getElementById('interactions-list');
+      if (!interactions.length) {
+        el.innerHTML = '<div class="text-muted">No interactions found.</div>';
+        return;
+      }
+      el.innerHTML = interactions.map(i => `
+        <div class="item" onclick="showInteraction(${i.id})">
+          <div><strong>${i.caption || (i.action || 'interaction')}</strong></div>
+          <div class="muted">action: ${i.action || '-'}</div>
+          <div class="muted">scene: ${i.scene_id ?? '-'} | linked objects: ${i.objects.length}</div>
+          <div class="muted">time: ${(i.scene_timestamp || i.created_at) ? new Date(i.scene_timestamp || i.created_at).toLocaleString() : '-'}</div>
+        </div>
+      `).join('');
+    }
+
+    async function toggleInteractionsBothLinked() {
+      interactionsBothLinked = document.getElementById('interactions-both-linked').checked;
+      interactions = [];
+      const res = await fetch(appendBuildingFilter(`/api/interactions?both_linked=${interactionsBothLinked}`));
+      interactions = await res.json();
+      renderInteractionsList();
+    }
+
+    let _interactionReloadPollTimer = null;
+    async function reloadInteractions() {
+      const resultDiv = document.getElementById('reload-interactions-result');
+      const btn = document.getElementById('reload-interactions-btn');
+      const building = (window.getSelectedBuilding && window.getSelectedBuilding()) || '';
+      if (!building) {
+        resultDiv.innerHTML = '<span style="color:#b00020;">Select a building/map first (top bar) before reloading interactions.</span>';
+        return;
+      }
+      if (!window.confirm(`Regenerate ALL interactions for map "${building}" from stored scene images? This deletes the map's current interactions and recreates them (object/scene clusters are not changed). Continue?`)) {
+        return;
+      }
+      if (_interactionReloadPollTimer) {
+        clearInterval(_interactionReloadPollTimer);
+        _interactionReloadPollTimer = null;
+      }
+      if (btn) btn.disabled = true;
+      resultDiv.textContent = 'Starting interaction reload...';
+      try {
+        const res = await fetch(`/api/interactions/reload?building=${encodeURIComponent(building)}`, { method: 'POST' });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `Reload failed with ${res.status}`);
+        }
+        const startData = await res.json();
+        const jobId = startData.job_id;
+        resultDiv.innerHTML = `<span class="meta">Reloading interactions… job <code>${escapeHtml(jobId)}</code> started.</span>`;
+        _interactionReloadPollTimer = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/interactions/reload/jobs/${jobId}`);
+            if (!pollRes.ok) return;
+            const job = await pollRes.json();
+            if (job.status === 'running' || job.status === 'queued') {
+              const done = job.steps_done || 0;
+              const total = job.total_steps || 0;
+              const phase = job.phase ? ` (${escapeHtml(job.phase)})` : '';
+              resultDiv.innerHTML = `<span class="meta">Reloading interactions… scene ${done} / ${total}${phase}</span>`;
+            } else if (job.status === 'done') {
+              clearInterval(_interactionReloadPollTimer);
+              _interactionReloadPollTimer = null;
+              if (btn) btn.disabled = false;
+              const r = job.result || {};
+              resultDiv.innerHTML = `
+                <div style="border-left:3px solid #0d6efd;background:#f0f5ff;padding:6px 10px;border-radius:8px;">
+                  <div style="font-weight:700;color:#0d6efd;font-size:13px;">Interaction reload complete</div>
+                  <div class="meta">${r.interactions_inserted || 0} interactions regenerated from ${r.scenes_processed || 0} scenes (${r.scenes_skipped || 0} skipped).</div>
+                </div>
+              `;
+              interactions = [];
+              const res2 = await fetch(appendBuildingFilter(`/api/interactions?both_linked=${interactionsBothLinked}`));
+              interactions = await res2.json();
+              renderInteractionsList();
+            } else if (job.status === 'error') {
+              clearInterval(_interactionReloadPollTimer);
+              _interactionReloadPollTimer = null;
+              if (btn) btn.disabled = false;
+              resultDiv.innerHTML = `<span style="color:#b00020;">${escapeHtml(job.error || 'Unknown error')}</span>`;
+            }
+          } catch (e) {
+            // ignore poll errors
+          }
+        }, 2000);
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        resultDiv.innerHTML = `<span style="color:#b00020;">${escapeHtml(err.message || String(err))}</span>`;
+      }
+    }
+
+    let detailLazyObservers = [];
+
+    function disconnectDetailLazyObservers() {
+      detailLazyObservers.forEach((observer) => observer.disconnect());
+      detailLazyObservers = [];
+    }
+
+    function setupLazyGrid({ items, gridId, sentinelId, renderCard, batchSize = 60 }) {
+      const grid = document.getElementById(gridId);
+      const sentinel = document.getElementById(sentinelId);
+      if (!grid || !sentinel) {
+        return;
+      }
+      let nextIndex = 0;
+      const appendBatch = () => {
+        const batch = items.slice(nextIndex, nextIndex + batchSize);
+        if (batch.length) {
+          grid.insertAdjacentHTML('beforeend', batch.map(renderCard).join(''));
+          nextIndex += batch.length;
+        }
+        const remaining = items.length - nextIndex;
+        if (remaining <= 0) {
+          sentinel.style.display = 'none';
+        } else {
+          sentinel.style.display = '';
+          const btn = sentinel.querySelector('button');
+          if (btn) {
+            btn.textContent = `Load more (${remaining} remaining)`;
+          }
+        }
+      };
+      const btn = sentinel.querySelector('button');
+      if (btn) {
+        btn.addEventListener('click', appendBatch);
+      }
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          appendBatch();
+        }
+      }, { rootMargin: '800px' });
+      observer.observe(sentinel);
+      detailLazyObservers.push(observer);
+      appendBatch();
+    }
+
+    function renderObservationCard(o, objectId) {
+      return `
+        <div class="thumb-card">
+          <div style="display:flex;gap:4px;">
+            <div style="flex:1;">
+              <img src="${o.image_url}" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(o.image_url)}', 'Observation ${o.id}')" />
+            </div>
+          </div>
+          <div class="muted">obs #${o.id}</div>
+          <div class="muted">observation yolo track id: ${o.yolo_track_id ?? '-'}</div>
+          <div class="muted">scene #${o.scene_id ?? '-'}</div>
+          <div class="muted">time: ${o.created_at ? new Date(o.created_at).toLocaleString() : '-'}</div>
+          <div class="muted">map/object position: (${o.x ?? '-'}, ${o.y ?? '-'}, ${o.z ?? '-'})</div>
+          <div class="muted">position source: ${
+            o.position_source === 'dynosam'
+              ? 'DynoSAM'
+              : (o.position_source === 'depth'
+                ? 'Depth camera'
+                : (o.position_source === 'yolo'
+                  ? 'YOLO detection'
+                  : o.position_source || '-'))
+          }</div>
+          ${o.detection_backend ? `<div class="muted">detection backend: ${escapeHtml(o.detection_backend)}</div>` : ''}
+          ${o.embedding_backend ? `<div class="muted">embedding backend: ${escapeHtml(o.embedding_backend)}</div>` : ''}
+          <div class="muted">robot position (SLAM): (${o.robot_x ?? '-'}, ${o.robot_y ?? '-'}, ${o.robot_z ?? '-'})</div>
+          <div class="muted">relative position: (${o.rel_x ?? '-'}, ${o.rel_y ?? '-'}, ${o.rel_z ?? '-'})</div>
+          <button class="btn btn-sm btn-outline-danger mt-1" style="font-size:10px;padding:2px 6px;" onclick="deleteObservation(${o.id}, '${objectId}')">Delete</button>
+        </div>
+      `;
+    }
+
+    function renderFaceCard(face) {
+      return `
+        <div class="thumb-card">
+          <img src="${face.image_url}" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(face.image_url)}', 'Face ${face.id}')" />
+          <div class="muted">face obs #${face.id}</div>
+          <div class="muted">person #${face.person_id ?? '-'}</div>
+          <div class="muted">scene #${face.scene_id ?? '-'}</div>
+          <div class="muted">track: ${face.yolo_track_id ?? '-'}</div>
+          <div class="muted">score: ${face.score ?? '-'}</div>
+        </div>
+      `;
+    }
+
+    async function showObject(objectId) {
+      disconnectDetailLazyObservers();
+      const [obsRes, intRes, facesRes] = await Promise.all([
+        fetch(appendBuildingFilter(`/api/objects/${encodeURIComponent(objectId)}/observations`)),
+        fetch(appendBuildingFilter(`/api/objects/${encodeURIComponent(objectId)}/interactions`)),
+        fetch(appendBuildingFilter(`/api/objects/${encodeURIComponent(objectId)}/faces`)),
+      ]);
+      const obs = await obsRes.json();
+      const interactionsData = await intRes.json();
+      const faces = await facesRes.json();
+      const selectedObject = objects.find((item) => String(item.id) === String(objectId));
+      const detailInputId = `object-detail-name-${String(objectId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      document.getElementById('details-panel').style.display = '';
+      document.getElementById('detailTitle').textContent = `Cluster ${objectId}`;
+
+      const interactionCards = interactionsData.map(i => `
+        <div class="item" onclick="showInteraction(${i.id})">
+          <div><strong>${escapeHtml(i.caption || (i.action || 'interaction'))}</strong></div>
+          <div class="muted">action: ${escapeHtml(i.action || '-')}</div>
+          <div class="muted">scene: ${i.scene_id ?? '-'} | linked objects: ${i.objects?.length ?? 0}</div>
+          <div class="muted">time: ${(i.scene_timestamp || i.created_at) ? new Date(i.scene_timestamp || i.created_at).toLocaleString() : '-'}</div>
+          <div class="muted">role: ${i.objects?.find(o => String(o.object_id) === String(objectId))?.role ?? 'unknown'}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('details').innerHTML = `
+        <div class="mb-3 d-flex gap-2 align-items-center flex-wrap">
+          <label class="form-label mb-0" for="${detailInputId}"><strong>Object name</strong></label>
+          <input id="${detailInputId}" class="form-control" style="max-width: 320px;" type="text" value="${escapeHtml(selectedObject?.name || '')}" placeholder="Optional object name">
+          <button class="btn btn-sm btn-outline-secondary" type="button" onclick="saveObjectName('${objectId}', '${detailInputId}')">Save</button>
+          <button class="btn btn-sm btn-outline-secondary" type="button" onclick="document.getElementById('${detailInputId}').value=''; saveObjectName('${objectId}', '${detailInputId}')">Clear</button>
+        </div>
+        <div class="mb-3">
+          <div><strong>Class:</strong> ${escapeHtml(selectedObject?.class_name ? `${selectedObject.class_name} (${selectedObject.class_id})` : String(selectedObject?.class_id ?? '-'))}</div>
+        </div>
+        <h5>Observations (${obs.length})</h5>
+        <div class="thumb-grid" id="obs-thumb-grid"></div>
+        <div id="obs-load-sentinel" class="text-center my-2" style="display:none;">
+          <button class="btn btn-sm btn-outline-secondary" type="button">Load more</button>
+        </div>
+        <h5 class="mt-4">Face Detections (${faces.length})</h5>
+        <div class="thumb-grid" id="face-thumb-grid"></div>
+        ${faces.length ? '' : '<div class="text-muted">No face detections linked to this object yet.</div>'}
+        <div id="face-load-sentinel" class="text-center my-2" style="display:none;">
+          <button class="btn btn-sm btn-outline-secondary" type="button">Load more</button>
+        </div>
+        <h5 class="mt-4">Interactions (${interactionsData.length})</h5>
+        <div class="item-list">
+          ${interactionCards || '<div class="text-muted">No interactions found.</div>'}
+        </div>
+      `;
+
+      setupLazyGrid({
+        items: obs,
+        gridId: 'obs-thumb-grid',
+        sentinelId: 'obs-load-sentinel',
+        renderCard: (o) => renderObservationCard(o, objectId),
+      });
+      setupLazyGrid({
+        items: faces,
+        gridId: 'face-thumb-grid',
+        sentinelId: 'face-load-sentinel',
+        renderCard: renderFaceCard,
+      });
+    }
+
+    async function showPerson(personId) {
+      selectedPersonId = personId;
+      renderPersonsList();
+      const [facesRes, clustersRes] = await Promise.all([
+        fetch(appendBuildingFilter(`/api/persons/${encodeURIComponent(personId)}/faces`)),
+        fetch(appendBuildingFilter(`/api/persons/${encodeURIComponent(personId)}/clusters`)),
+      ]);
+      const faces = await facesRes.json();
+      const clusters = await clustersRes.json();
+
+      document.getElementById('details-panel').style.display = '';
+      document.getElementById('detailTitle').textContent = `Person ${personId}`;
+      document.getElementById('details').innerHTML = `
+        <div class="mb-3">
+          <div><strong>Recognized face observations:</strong> ${faces.length}</div>
+          <div class="muted">Linked object clusters: ${clusters.length}</div>
+        </div>
+        <div class="map-card">
+          <h5>Linked Object Clusters</h5>
+          ${clusters.length ? `
+            <table class="table table-sm table-striped align-middle">
+              <thead>
+                <tr>
+                  <th>Cluster</th>
+                  <th>Name</th>
+                  <th></th>
+                  <th>Class</th>
+                  <th>Obs</th>
+                  <th>Track</th>
+                  <th>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${clusters.map(c => {
+                  const inputId = `cluster-name-${String(c.object_id).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+                  return `
+                    <tr>
+                      <td>${c.object_id}</td>
+                      <td><input id="${inputId}" class="form-control form-control-sm" type="text" value="${escapeHtml(c.name || '')}" placeholder="Optional object name"></td>
+                      <td class="text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="saveClusterObjectName('${c.object_id}', '${inputId}')">Save</button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" onclick="document.getElementById('${inputId}').value=''; saveClusterObjectName('${c.object_id}', '${inputId}')">Clear</button>
+                      </td>
+                      <td>${c.class_name ? `${c.class_name} (${c.class_id})` : (c.class_id ?? '-')}</td>
+                      <td>${c.observation_count ?? 0}</td>
+                      <td>${c.latest_yolo_track_id ?? '-'}</td>
+                      <td>${c.last_seen_at ? new Date(c.last_seen_at).toLocaleString() : '-'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          ` : '<div class="text-muted">No object clusters linked to this person yet.</div>'}
+        </div>
+        <div class="thumb-grid">
+          ${clusters.map(c => `
+            <div class="thumb-card">
+              <div style="display:flex;gap:4px;">
+                ${c.latest_observation_id ? `<div style="flex:1;"><img src="/api/observations/${c.latest_observation_id}/image" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('/api/observations/${c.latest_observation_id}/image', 'Cluster ${c.object_id}')" onerror="this.style.display='none';this.parentElement.style.display='none';" /></div>` : ''}
+              </div>
+              <div><strong>${c.class_name || 'object'}</strong> #${c.object_id}</div>
+              <div class="muted">obs: ${c.observation_count ?? 0}</div>
+              <div class="muted">track: ${c.latest_yolo_track_id ?? '-'}</div>
+            </div>
+          `).join('') || '<div class="text-muted">No object clusters linked to this person yet.</div>'}
+        </div>
+        ${faces.length ? `<div class="mt-4"><h5>Face Observations</h5></div>` : ''}
+        <div class="thumb-grid">
+          ${faces.map(face => `
+            <div class="thumb-card">
+              <div class="thumb-card-media-grid">
+                ${sceneOriginalImageUrl(face.scene_id)
+                  ? `<img src="${sceneOriginalImageUrl(face.scene_id)}" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(sceneOriginalImageUrl(face.scene_id))}', 'Scene ${face.scene_id}')" />`
+                  : ''}
+                <img src="${face.image_url}" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(face.image_url)}', 'Face ${face.id}')" />
+              </div>
+              <div class="muted">face obs #${face.id}</div>
+              <div class="muted">scene #${face.scene_id ?? '-'}</div>
+              <div class="muted">object #${face.object_id ?? '-'}</div>
+              <div class="muted">track: ${face.yolo_track_id ?? '-'}</div>
+              <div class="muted">score: ${face.score ?? '-'}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function renderMapPanel() {
+      const container = document.getElementById('map-content');
+      if (!container) {
+        return;
+      }
+      rememberOccupancyMapScroll('map');
+      rememberOccupancyMapScroll('map_costmap');
+      rememberOccupancyMapScroll('map_lidar');
+
+      const toolboxAvailable = Boolean(toolboxMapSnapshot && toolboxMapSnapshot.available);
+      const toolboxStats = toolboxMapSnapshot && toolboxMapSnapshot.available ? toolboxMapSnapshot.stats || {} : null;
+      const toolboxTimestamp = toolboxMapSnapshot && toolboxMapSnapshot.generated_at
+        ? new Date(Number(toolboxMapSnapshot.generated_at) * 1000).toLocaleTimeString()
+        : 'unknown';
+      const toolboxSource = toolboxMapSnapshot && toolboxMapSnapshot.source ? toolboxMapSnapshot.source : 'not available';
+      const costmapAvailable = Boolean(nav2GlobalCostmap && nav2GlobalCostmap.available);
+      const costmapStats = costmapAvailable ? nav2GlobalCostmap.stats || {} : null;
+      const costmapTimestamp = costmapAvailable && nav2GlobalCostmap.generated_at
+        ? new Date(Number(nav2GlobalCostmap.generated_at) * 1000).toLocaleTimeString()
+        : 'unknown';
+      const costmapSource = costmapAvailable ? (nav2GlobalCostmap.source || 'global_costmap/costmap') : 'not available';
+      const activeMode = toolboxMapPersistence?.active_mode || 'idle';
+      const executionStatusMatchesPlan = executionMatchesPlannedNavigation();
+      const executionState = executionStatusMatchesPlan ? String(navigationExecutionStatus?.state || 'idle') : 'idle';
+      const executionBusy = ['queued', 'running', 'submitting'].includes(executionState);
+      const executionAvailable = Boolean(plannedNavigation?.navigation_execution?.available);
+      const lidarAvailable = Boolean(lidarOccupancyMap && lidarOccupancyMap.available);
+      const lidarStats = lidarAvailable ? lidarOccupancyMap.stats || {} : null;
+      const lidarTimestamp = lidarAvailable && lidarOccupancyMap.generated_at
+        ? new Date(Number(lidarOccupancyMap.generated_at) * 1000).toLocaleTimeString()
+        : 'unknown';
+      const lidarSource = lidarAvailable ? (lidarOccupancyMap.source || 'unknown') : 'not available';
+      const plannedPathCard = plannedNavigation ? `
+        <div class="map-card">
+          <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div>
+              <h5 class="mb-1">Planned Path</h5>
+              <div class="muted">
+                ${plannedNavigation.source === 'custom'
+                  ? 'Custom path'
+                  : `${plannedNavigation.observation?.class_name || 'object'} | observation ${plannedNavigation.observation?.id ?? '-'}`} |
+                ${Number(plannedNavigation.plan?.path_length_m ?? 0).toFixed(2)} m |
+                ${plannedNavigation.plan?.num_waypoints ?? 0} waypoints
+              </div>
+              <div class="muted">
+                ${plannedNavigation.navigation_execution?.available
+                  ? 'Execution hook available.'
+                  : 'Preview only.'}
+                ${plannedNavigation.navigation_execution?.reason ? ` ${plannedNavigation.navigation_execution.reason}` : ''}
+              </div>
+              <div class="muted">${executionStatusMatchesPlan ? navigationExecutionSummary() : 'Execution state: not yet accepted.'}</div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button
+                class="btn btn-sm btn-success"
+                onclick="acceptPlannedNavigation()"
+                ${executionBusy || !executionAvailable ? 'disabled' : ''}
+              >${!executionAvailable ? 'Preview only' : (executionState === 'completed' ? 'Navigate again' : (executionBusy ? 'Submitting…' : 'Accept and navigate'))}</button>
+              <button class="btn btn-sm btn-outline-secondary" onclick="clearPlannedNavigation()">Clear path</button>
+            </div>
+          </div>
+        </div>
+      ` : '';
+
+      container.innerHTML = `
+        ${plannedPathCard}
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="muted">Toolbox map</div>
+            <div><strong>${toolboxAvailable ? `${toolboxStats.occupied_cells || 0} occupied cells` : 'Waiting for data'}</strong></div>
+          </div>
+          <div class="stat-card">
+            <div class="muted">Last map update</div>
+            <div><strong>${toolboxTimestamp}</strong></div>
+          </div>
+          <div class="stat-card">
+            <div class="muted">Observed cells</div>
+            <div><strong>${toolboxStats ? (toolboxStats.observed_cells || 0) : 0}</strong></div>
+          </div>
+          <div class="stat-card">
+            <div class="muted">Unknown cells</div>
+            <div><strong>${toolboxStats ? (toolboxStats.unknown_cells || 0) : 0}</strong></div>
+          </div>
+        </div>
+        <div class="map-card">
+          <h5>slam_toolbox Occupancy Map</h5>
+          ${renderRecordingStatusNotice({ activeMode, toolboxAvailable, toolboxStats, toolboxStatus: toolboxSource })}
+          ${renderToolboxMapSelectionControls()}
+          ${renderPersistedDetectionImageToggle()}
+          ${renderCustomPathToolbar()}
+          ${renderRoomMarkingToolbar()}
+          ${shouldShowFreshEmptyMap()
+            ? renderFreshEmptyMapNotice()
+            : renderOccupancyGridSvg(toolboxMapSnapshot, 'map', {
+                mapName: 'toolbox occupancy map',
+                occupiedColor: toolboxMapSnapshot?.mode === 'frozen' ? 'blue' : 'orange',
+                includeLiveScan: false,
+              })}
+          <div class="map-legend">
+            <div>Dark ${toolboxMapSnapshot?.mode === 'frozen' ? 'blue' : 'orange'} cells: occupied</div>
+            <div>Light gray cells: known free</div>
+            <div>Near-white cells: unknown</div>
+            <div>Gold marker: robot pose from odometry (arrow = heading)</div>
+            <div>Battery badge above robot: charge percentage (green ≥50%, orange ≥20%, red &lt;20%)</div>
+            <div>Green polygons/rectangles: saved rooms for the active loaded map</div>
+            <div>Red markers: recent YOLO detections projected into the map/world frame</div>
+            <div>Dark red squares: detections saved in the database in world/map coordinates</div>
+            <div>Green line: planned A* path on free occupancy cells</div>
+            <div>Blue/purple circles: custom path start/end points being selected</div>
+            <div>Source: ${toolboxSource}</div>
+          </div>
+        </div>
+      `;
+      restoreOccupancyMapScroll('map');
+      restoreOccupancyMapScroll('map_lidar');
+    }
+
+    function renderMapSvg(points, { mode = 'points', emptyLabel = 'No data.' } = {}) {
+      if (!points.length) {
+        return `<div class="text-muted">${emptyLabel}</div>`;
+      }
+
+      const width = 720;
+      const height = 420;
+      const padding = 36;
+      const xs = points.map(p => Number(p.x)).filter(Number.isFinite);
+      const ys = points.map(p => Number(p.y)).filter(Number.isFinite);
+      if (!xs.length || !ys.length) {
+        return `<div class="text-muted">${emptyLabel}</div>`;
+      }
+
+      const minX = -2.5;
+      const maxX = 2.5;
+      const minY = -2.5;
+      const maxY = 2.5;
+
+      const scaleX = x => padding + ((x - minX) / (maxX - minX)) * (width - padding * 2);
+      const scaleY = y => height - padding - ((y - minY) / (maxY - minY)) * (height - padding * 2);
+
+      const axes = `
+        <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#b8c2cc" stroke-width="1.5"/>
+        <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#b8c2cc" stroke-width="1.5"/>
+        <text x="${width - padding}" y="${height - 10}" font-size="12" fill="#5f6b76" text-anchor="end">x</text>
+        <text x="12" y="${padding}" font-size="12" fill="#5f6b76">y</text>
+        <text x="${padding}" y="${height - 10}" font-size="11" fill="#5f6b76">${minX.toFixed(2)}</text>
+        <text x="${width - padding}" y="${height - 10}" font-size="11" fill="#5f6b76" text-anchor="end">${maxX.toFixed(2)}</text>
+        <text x="12" y="${height - padding}" font-size="11" fill="#5f6b76">${minY.toFixed(2)}</text>
+        <text x="12" y="${padding + 12}" font-size="11" fill="#5f6b76">${maxY.toFixed(2)}</text>
+      `;
+
+      const palette = [
+        '#1d4ed8', '#dc2626', '#059669', '#d97706', '#7c3aed',
+        '#0891b2', '#65a30d', '#db2777', '#4f46e5', '#ea580c',
+        '#0f766e', '#9333ea', '#b91c1c', '#2563eb', '#15803d',
+      ];
+
+      function colorForObjectId(objectId) {
+        const text = String(objectId || '');
+        let hash = 0;
+        for (let i = 0; i < text.length; i += 1) {
+          hash = ((hash * 31) + text.charCodeAt(i)) >>> 0;
+        }
+        return palette[hash % palette.length];
+      }
+
+      let layers = '';
+      if (mode === 'heatmap') {
+        const bins = new Map();
+        const binsPerAxis = 12;
+        for (const point of points) {
+          const px = Number(point.x);
+          const py = Number(point.y);
+          if (px < minX || px > maxX || py < minY || py > maxY) {
+            continue;
+          }
+          const bx = Math.max(0, Math.min(binsPerAxis - 1, Math.floor(((px - minX) / (maxX - minX)) * binsPerAxis)));
+          const by = Math.max(0, Math.min(binsPerAxis - 1, Math.floor(((py - minY) / (maxY - minY)) * binsPerAxis)));
+          const key = `${bx}:${by}`;
+          bins.set(key, (bins.get(key) || 0) + 1);
+        }
+        if (bins.size > 0) {
+          const maxCount = Math.max(...bins.values());
+          layers += Array.from(bins.entries()).map(([key, count]) => {
+          const [bx, by] = key.split(':').map(Number);
+          const cx = padding + ((bx + 0.5) / binsPerAxis) * (width - padding * 2);
+          const cy = height - padding - ((by + 0.5) / binsPerAxis) * (height - padding * 2);
+          const intensity = count / maxCount;
+          const radius = 6 + intensity * 18;
+          const opacity = 0.16 + intensity * 0.35;
+          return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="rgba(242, 101, 34, ${opacity.toFixed(3)})" />`;
+        }).join('');
+      }
+      }
+
+      layers += points.filter(point => {
+        const px = Number(point.x);
+        const py = Number(point.y);
+        return px >= minX && px <= maxX && py >= minY && py <= maxY;
+      }).map(point => {
+        const cx = scaleX(Number(point.x));
+        const cy = scaleY(Number(point.y));
+        const title = `${point.class_name || 'object'} | ${point.object_id} | (${Number(point.x).toFixed(2)}, ${Number(point.y).toFixed(2)}, ${Number(point.z ?? 0).toFixed(2)})`;
+        const fill = mode === 'points' ? colorForObjectId(point.object_id) : '#1d4ed8';
+        return `
+          <circle cx="${cx}" cy="${cy}" r="4" fill="${fill}" fill-opacity="0.75" stroke="#ffffff" stroke-width="1.2">
+            <title>${title}</title>
+          </circle>
+        `;
+      }).join('');
+
+      return `<svg class="map-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">${axes}${layers}</svg>`;
+    }
+
+    function renderGridToCanvasDataUrl(gridWidth, gridHeight, values, occupiedColor = 'blue') {
+      if (gridWidth <= 0 || gridHeight <= 0) {
+        return '';
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = gridWidth;
+      canvas.height = gridHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: false });
+      const imageData = ctx.createImageData(gridWidth, gridHeight);
+      const data = imageData.data;
+      const occupiedColors = {
+        blue: [29, 78, 216],
+        orange: [234, 88, 12],
+        red: [185, 28, 28],
+      };
+      const [occR, occG, occB] = occupiedColors[occupiedColor] || occupiedColors.blue;
+
+      for (let row = 0; row < gridHeight; row += 1) {
+        const flippedRow = gridHeight - 1 - row;
+        const rowOffset = flippedRow * gridWidth;
+        for (let col = 0; col < gridWidth; col += 1) {
+          const value = Number(values[row * gridWidth + col] ?? -1);
+          const idx = (rowOffset + col) * 4;
+          if (value === 0) {
+            data[idx] = 227;
+            data[idx + 1] = 232;
+            data[idx + 2] = 239;
+            data[idx + 3] = 255;
+          } else if (value > 0) {
+            const opacity = Math.min(0.95, 0.20 + (value / 100) * 0.75);
+            data[idx] = occR;
+            data[idx + 1] = occG;
+            data[idx + 2] = occB;
+            data[idx + 3] = Math.round(opacity * 255);
+          } else {
+            data[idx] = 247;
+            data[idx + 1] = 248;
+            data[idx + 2] = 250;
+            data[idx + 3] = 255;
+          }
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toDataURL('image/png');
+    }
+
+    function buildOccupancyGridBaseCacheKey(payload, viewportKey, width, padding, drawableHeight) {
+      const map = payload?.map || {};
+      const stats = payload?.stats || {};
+      return JSON.stringify([
+        viewportKey,
+        payload?.source || '',
+        payload?.generated_at || '',
+        map.frame_id || '',
+        Number(map.origin?.x ?? 0),
+        Number(map.origin?.y ?? 0),
+        Number(map.resolution ?? 0),
+        Number(map.width ?? 0),
+        Number(map.height ?? 0),
+        Array.isArray(map.data) ? map.data.length : 0,
+        Number(stats.occupied_cells ?? -1),
+        Number(stats.observed_cells ?? -1),
+        Number(stats.unknown_cells ?? -1),
+        width,
+        padding,
+        drawableHeight,
+      ]);
+    }
+
+    function getCachedOccupancyGridBase(payload, viewportKey, width, padding, drawableWidth, drawableHeight, extents = {}, occupiedColor = 'blue') {
+      const map = payload.map;
+      const resolution = Number(map.resolution ?? 0.1);
+      const gridWidth = Number(map.width ?? 0);
+      const gridHeight = Number(map.height ?? 0);
+      const height = drawableHeight + padding * 2;
+      const defaultMinX = Number(map.origin?.x ?? -10);
+      const defaultMinY = Number(map.origin?.y ?? -10);
+      const defaultMaxX = defaultMinX + gridWidth * resolution;
+      const defaultMaxY = defaultMinY + gridHeight * resolution;
+      const minX = Number.isFinite(Number(extents.minX)) ? Number(extents.minX) : defaultMinX;
+      const minY = Number.isFinite(Number(extents.minY)) ? Number(extents.minY) : defaultMinY;
+      const maxX = Number.isFinite(Number(extents.maxX)) ? Number(extents.maxX) : defaultMaxX;
+      const maxY = Number.isFinite(Number(extents.maxY)) ? Number(extents.maxY) : defaultMaxY;
+      const cellWidth = drawableWidth / Math.max(gridWidth, 1);
+      const cellHeight = drawableHeight / Math.max(gridHeight, 1);
+      const values = Array.isArray(map.data) ? map.data : [];
+      const cacheKey = JSON.stringify([
+        buildOccupancyGridBaseCacheKey(payload, viewportKey, width, padding, drawableHeight),
+        minX,
+        minY,
+        maxX,
+        maxY,
+        occupiedColor,
+      ]);
+      const cached = occupancyGridBaseCache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const axes = `
+        <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#b8c2cc" stroke-width="1.5"/>
+        <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#b8c2cc" stroke-width="1.5"/>
+        <text x="${width - padding}" y="${height - 10}" font-size="12" fill="#5f6b76" text-anchor="end">x</text>
+        <text x="12" y="${padding}" font-size="12" fill="#5f6b76">y</text>
+        <text x="${padding}" y="${height - 10}" font-size="11" fill="#5f6b76">${minX.toFixed(1)}</text>
+        <text x="${width - padding}" y="${height - 10}" font-size="11" fill="#5f6b76" text-anchor="end">${maxX.toFixed(1)}</text>
+        <text x="12" y="${height - padding}" font-size="11" fill="#5f6b76">${minY.toFixed(1)}</text>
+        <text x="12" y="${padding + 12}" font-size="11" fill="#5f6b76">${maxY.toFixed(1)}</text>
+      `;
+
+      const gridImageUrl = renderGridToCanvasDataUrl(gridWidth, gridHeight, values, occupiedColor);
+
+      const base = {
+        axes,
+        gridImageUrl,
+        height,
+        minX,
+        minY,
+        maxX,
+        maxY,
+        resolution,
+        gridWidth,
+        gridHeight,
+      };
+      occupancyGridBaseCache.set(cacheKey, base);
+      if (occupancyGridBaseCache.size > 6) {
+        const oldestKey = occupancyGridBaseCache.keys().next().value;
+        occupancyGridBaseCache.delete(oldestKey);
+      }
+      return base;
+    }
+
+    function renderOccupancyGridSvg(payload, viewportKey = 'map', options = {}) {
+      if (!payload || !payload.available || !payload.map) {
+        return `<div class="text-muted">No ${(options.mapName || 'occupancy map')} available yet.</div>`;
+      }
+
+      const map = payload.map;
+      const stats = payload.stats || {};
+      const width = 720;
+      const padding = 36;
+      const resolution = Number(map.resolution ?? 0.1);
+      const gridWidth = Number(map.width ?? 0);
+      const gridHeight = Number(map.height ?? 0);
+      const drawableWidth = width - padding * 2;
+      const drawableHeight = Math.max(240, Math.round(drawableWidth * (Math.max(gridHeight, 1) / Math.max(gridWidth, 1))));
+      const includeLiveScan = options.includeLiveScan !== false;
+      const includeLiveDetections = options.includeLiveDetections !== false;
+      const includePersistedDetections = options.includePersistedDetections !== false;
+      const includePlannedPath = options.includePlannedPath !== false;
+      const includeRooms = options.includeRooms !== false;
+      const robot = (() => {
+        const primaryRobot = payload.robot;
+        if (primaryRobot && Number.isFinite(Number(primaryRobot.x)) && Number.isFinite(Number(primaryRobot.y))) {
+          return primaryRobot;
+        }
+        const fallbackRobot = lidarOccupancyMap?.robot;
+        if (fallbackRobot && Number.isFinite(Number(fallbackRobot.x)) && Number.isFinite(Number(fallbackRobot.y))) {
+          return fallbackRobot;
+        }
+        return null;
+      })();
+      const requireDynosamPosition = viewportKey === 'map';
+      const detections = (includeLiveDetections ? (Array.isArray(payload.detections) ? payload.detections : []) : [])
+        .filter(det => !requireDynosamPosition || Boolean(det.has_dynosam_position) || Boolean(det.has_depth_position) || det.position_source === 'depth');
+      const persistedDetections = includePersistedDetections
+        ? (Array.isArray(lidarDetectionMarkers) ? lidarDetectionMarkers : [])
+        : [];
+      const roomItems = includeRooms
+        ? (roomMarkingMode ? roomDrafts : activeMapRooms())
+        : [];
+      const plannedPath = includePlannedPath && Array.isArray(plannedNavigation?.plan?.path) ? plannedNavigation.plan.path : [];
+      const plannedStart = includePlannedPath ? (plannedNavigation?.plan?.start?.planned_world || null) : null;
+      const plannedGoal = includePlannedPath ? (plannedNavigation?.plan?.goal?.planned_world || null) : null;
+
+      const mapMinX = Number(map.origin?.x ?? -10);
+      const mapMinY = Number(map.origin?.y ?? -10);
+      const mapMaxX = mapMinX + gridWidth * resolution;
+      const mapMaxY = mapMinY + gridHeight * resolution;
+      const extentPoints = [];
+      if (robot && Number.isFinite(Number(robot.x)) && Number.isFinite(Number(robot.y))) {
+        extentPoints.push({ x: Number(robot.x), y: Number(robot.y) });
+      }
+      for (const point of plannedPath) {
+        if (Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y))) {
+          extentPoints.push({ x: Number(point.x), y: Number(point.y) });
+        }
+      }
+      for (const point of [plannedStart, plannedGoal]) {
+        if (point && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y))) {
+          extentPoints.push({ x: Number(point.x), y: Number(point.y) });
+        }
+      }
+      const extentMargin = Math.max(0.5, resolution * 6);
+      const minX = Math.min(mapMinX, ...extentPoints.map(point => point.x - extentMargin));
+      const minY = Math.min(mapMinY, ...extentPoints.map(point => point.y - extentMargin));
+      const maxX = Math.max(mapMaxX, ...extentPoints.map(point => point.x + extentMargin));
+      const maxY = Math.max(mapMaxY, ...extentPoints.map(point => point.y + extentMargin));
+      const occupiedColor = options.occupiedColor || 'blue';
+      const base = getCachedOccupancyGridBase(
+        payload,
+        viewportKey,
+        width,
+        padding,
+        drawableWidth,
+        drawableHeight,
+        { minX, minY, maxX, maxY },
+        occupiedColor,
+      );
+      const height = base.height;
+      mapCoordParams[viewportKey] = { minX, minY, maxX, maxY, width, height, padding, drawableWidth, drawableHeight };
+
+      const scaleX = x => padding + ((x - minX) / Math.max(maxX - minX, 1e-6)) * drawableWidth;
+      const scaleY = y => height - padding - ((y - minY) / Math.max(maxY - minY, 1e-6)) * drawableHeight;
+      let robotOverlay = '';
+      let robotScreenPosition = null;
+      if (robot && Number.isFinite(Number(robot.x)) && Number.isFinite(Number(robot.y))) {
+        const rx = scaleX(Number(robot.x));
+        const ry = scaleY(Number(robot.y));
+        robotScreenPosition = { x: rx, y: ry };
+        const robotYaw = Number.isFinite(Number(robot.yaw)) ? Number(robot.yaw) : 0;
+        const arrowLen = 14;
+        const tipX = rx + Math.cos(robotYaw) * arrowLen;
+        const tipY = ry - Math.sin(robotYaw) * arrowLen;
+        const arrowSvg = Number.isFinite(Number(robot.yaw))
+          ? `<line x1="${rx}" y1="${ry}" x2="${tipX}" y2="${tipY}" stroke="#b45309" stroke-width="2.5" stroke-linecap="round" />`
+          : '';
+        const battery = payload.battery;
+        let batterySvg = '';
+        if (battery && Number.isFinite(Number(battery.charge_percentage))) {
+          const pct = Number(battery.charge_percentage);
+          const batteryColor = pct >= 50 ? '#22c55e' : (pct >= 20 ? '#f97316' : '#ef4444');
+          batterySvg = `
+            <rect x="${rx - 18}" y="${ry - 28}" width="36" height="14" rx="3" fill="rgba(0,0,0,0.7)" />
+            <text x="${rx}" y="${ry - 17}" text-anchor="middle" fill="${batteryColor}" font-size="10" font-family="sans-serif" font-weight="bold">${pct.toFixed(0)}%</text>
+          `;
+        }
+        robotOverlay = `
+          ${batterySvg}
+          <circle cx="${rx}" cy="${ry}" r="8" fill="#f59e0b" stroke="#ffffff" stroke-width="2">
+            <title>robot (${Number(robot.x).toFixed(2)}, ${Number(robot.y).toFixed(2)}, ${Number(robot.z ?? 0).toFixed(2)}) yaw ${robotYaw.toFixed(2)}</title>
+          </circle>
+          <circle cx="${rx}" cy="${ry}" r="16" fill="none" stroke="rgba(245, 158, 11, 0.35)" stroke-width="2" />
+          ${arrowSvg}
+        `;
+      }
+
+      const scanFrameId = lidarScanSnapshot?.frame_id || lidarScanSnapshot?.sensor_frame_id || '';
+      const mapFrameId = map.frame_id || '';
+      const scanAligned = !scanFrameId || !mapFrameId || scanFrameId === mapFrameId;
+      let scanOverlay = '';
+      if (includeLiveScan && scanAligned && lidarScanSnapshot && lidarScanSnapshot.available && Array.isArray(lidarScanSnapshot.points)) {
+        scanOverlay = lidarScanSnapshot.points
+          .filter(point => Array.isArray(point) && point.length >= 2)
+          .filter(point => Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
+          .filter(point => Number(point[0]) >= minX && Number(point[0]) <= maxX && Number(point[1]) >= minY && Number(point[1]) <= maxY)
+          .map(point => {
+            const px = scaleX(Number(point[0]));
+            const py = scaleY(Number(point[1]));
+            return `<circle cx="${px}" cy="${py}" r="1.4" fill="rgba(245, 158, 11, 0.75)" />`;
+          })
+          .join('');
+      }
+
+      const detectionOverlay = detections
+        .filter(det => Number.isFinite(Number(det.x)) && Number.isFinite(Number(det.y)))
+        .filter(det => Number(det.x) >= minX && Number(det.x) <= maxX && Number(det.y) >= minY && Number(det.y) <= maxY)
+        .map(det => {
+          const px = scaleX(Number(det.x));
+          const py = scaleY(Number(det.y));
+          const overlapsRobot = robotScreenPosition
+            && Math.abs(px - robotScreenPosition.x) < 4
+            && Math.abs(py - robotScreenPosition.y) < 4;
+          const markerY = overlapsRobot ? py - 20 : py;
+          const classLabel = det.class_name || (Number.isFinite(Number(det.class_id)) && Number(det.class_id) >= 0 ? `class ${det.class_id}` : 'detected object');
+          const trackLabel = Number.isFinite(Number(det.track_id)) && Number(det.track_id) >= 0 ? `track ${Number(det.track_id)}` : 'untracked';
+          const scoreLabel = Number.isFinite(Number(det.score)) ? Number(det.score).toFixed(2) : '-';
+          return `
+            ${overlapsRobot ? `<line x1="${px}" y1="${py - 8}" x2="${px}" y2="${markerY + 7}" stroke="rgba(220, 38, 38, 0.7)" stroke-width="2" />` : ''}
+            <circle cx="${px}" cy="${markerY}" r="7" fill="#dc2626" stroke="#ffffff" stroke-width="2">
+              <title>${classLabel} | instance ${Number(det.instance_id)} | ${trackLabel} | score ${scoreLabel} | (${Number(det.x).toFixed(2)}, ${Number(det.y).toFixed(2)}, ${Number(det.z ?? 0).toFixed(2)})</title>
+            </circle>
+            <circle cx="${px}" cy="${markerY}" r="13" fill="none" stroke="rgba(220, 38, 38, 0.35)" stroke-width="2" />
+          `;
+        })
+        .join('');
+
+      const persistedDetectionOverlay = persistedDetections
+        .filter(det => Number.isFinite(Number(det.x)) && Number.isFinite(Number(det.y)))
+        .filter(det => Number(det.x) >= minX && Number(det.x) <= maxX && Number(det.y) >= minY && Number(det.y) <= maxY)
+        .map(det => {
+          const px = scaleX(Number(det.x));
+          const py = scaleY(Number(det.y));
+          const classLabel = det.class_name || (Number.isFinite(Number(det.class_id)) && Number(det.class_id) >= 0 ? `class ${det.class_id}` : 'stored detection');
+          const trackLabel = det.yolo_track_id ? `track ${det.yolo_track_id}` : 'untracked';
+          const createdAtLabel = det.scene_timestamp || det.created_at || '-';
+          const thumbWidth = 34;
+          const thumbHeight = 26;
+          const thumbX = px + 8;
+          const thumbY = py - thumbHeight - 10;
+          const safeImageUrl = det.image_url || '';
+          const safeImageTitle = escapeHtml(`${classLabel} | observation ${Number(det.observation_id)}`);
+          return `
+            <rect x="${px - 5}" y="${py - 5}" width="10" height="10" fill="#7f1d1d" stroke="#ffffff" stroke-width="1.5" rx="2" ry="2" />
+            ${showPersistedDetectionImages ? `
+              <line x1="${px + 4}" y1="${py - 4}" x2="${thumbX}" y2="${thumbY + thumbHeight - 3}" stroke="rgba(127, 29, 29, 0.75)" stroke-width="1.5" />
+              <rect x="${thumbX - 2}" y="${thumbY - 2}" width="${thumbWidth + 4}" height="${thumbHeight + 4}" fill="rgba(255,255,255,0.96)" stroke="#7f1d1d" stroke-width="1.5" rx="4" ry="4">
+                <title>${classLabel} | ${trackLabel} | observation ${Number(det.observation_id)} | (${Number(det.x).toFixed(2)}, ${Number(det.y).toFixed(2)}, ${Number(det.z ?? 0).toFixed(2)}) | ${createdAtLabel}</title>
+              </rect>
+              ${safeImageUrl
+                ? `<image href="${safeImageUrl}" x="${thumbX}" y="${thumbY}" width="${thumbWidth}" height="${thumbHeight}" preserveAspectRatio="xMidYMid slice" style="cursor:zoom-in" onclick="openPersistedDetectionModal('${escapeHtml(safeImageUrl)}', '${safeImageTitle}', ${Number(det.observation_id)})" />`
+                : `<rect x="${thumbX}" y="${thumbY}" width="${thumbWidth}" height="${thumbHeight}" fill="#f3d5d5" rx="3" ry="3" />`
+              }
+            ` : ''}
+          `;
+        })
+        .join('');
+
+      const plannedPathOverlay = plannedPath.length >= 2
+        ? `
+          <polyline
+            points="${plannedPath
+              .filter(point => Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)))
+              .map(point => `${scaleX(Number(point.x))},${scaleY(Number(point.y))}`)
+              .join(' ')}"
+            fill="none"
+            stroke="#16a34a"
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            opacity="0.95"
+          />
+        `
+        : '';
+
+      const plannedEndpointsOverlay = `
+        ${plannedStart && Number.isFinite(Number(plannedStart.x)) && Number.isFinite(Number(plannedStart.y))
+          ? `<circle cx="${scaleX(Number(plannedStart.x))}" cy="${scaleY(Number(plannedStart.y))}" r="6" fill="#22c55e" stroke="#ffffff" stroke-width="2"><title>planned start</title></circle>`
+          : ''}
+        ${plannedGoal && Number.isFinite(Number(plannedGoal.x)) && Number.isFinite(Number(plannedGoal.y))
+          ? `<circle cx="${scaleX(Number(plannedGoal.x))}" cy="${scaleY(Number(plannedGoal.y))}" r="6" fill="#15803d" stroke="#ffffff" stroke-width="2"><title>planned goal</title></circle>`
+          : ''}
+      `;
+
+      const roomOverlay = roomItems
+        .filter(room => Number.isFinite(Number(room.x1)) && Number.isFinite(Number(room.y1)) && Number.isFinite(Number(room.x2)) && Number.isFinite(Number(room.y2)))
+        .map((room, index) => {
+          const hasQuad = Number.isFinite(Number(room.x3)) && Number.isFinite(Number(room.y3)) && Number.isFinite(Number(room.x4)) && Number.isFinite(Number(room.y4));
+          const label = escapeHtml(room.name || `room ${index + 1}`);
+          if (hasQuad) {
+            const x1 = scaleX(Number(room.x1));
+            const y1 = scaleY(Number(room.y1));
+            const x2 = scaleX(Number(room.x2));
+            const y2 = scaleY(Number(room.y2));
+            const x3 = scaleX(Number(room.x3));
+            const y3 = scaleY(Number(room.y3));
+            const x4 = scaleX(Number(room.x4));
+            const y4 = scaleY(Number(room.y4));
+            return `
+              <polygon points="${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}" fill="rgba(22, 163, 74, 0.10)" stroke="rgba(22, 163, 74, 0.95)" stroke-width="2">
+                <title>${label}</title>
+              </polygon>
+              <text x="${x1 + 6}" y="${y1 + 16}" font-size="12" fill="#166534" font-weight="700">${label}</text>
+            `;
+          }
+          // Fallback rectangle for legacy 2-corner rooms
+          const x1 = scaleX(Number(room.x1));
+          const y1 = scaleY(Number(room.y1));
+          const x2 = scaleX(Number(room.x2));
+          const y2 = scaleY(Number(room.y2));
+          const left = Math.min(x1, x2);
+          const top = Math.min(y1, y2);
+          const rectWidth = Math.max(4, Math.abs(x2 - x1));
+          const rectHeight = Math.max(4, Math.abs(y2 - y1));
+          return `
+            <rect x="${left}" y="${top}" width="${rectWidth}" height="${rectHeight}" fill="rgba(22, 163, 74, 0.10)" stroke="rgba(22, 163, 74, 0.95)" stroke-width="2" rx="4" ry="4">
+              <title>${label}</title>
+            </rect>
+            <text x="${left + 6}" y="${top + 16}" font-size="12" fill="#166534" font-weight="700">${label}</text>
+          `;
+        })
+        .join('');
+
+      const scanShown = includeLiveScan && scanAligned && lidarScanSnapshot && lidarScanSnapshot.available;
+      const summary = `
+        <div class="muted mt-2">
+          frame: ${map.frame_id || '-'} |
+          scan frame: ${includeLiveScan && lidarScanSnapshot && lidarScanSnapshot.available ? (lidarScanSnapshot.frame_id || '-') : '-'} |
+          scan aligned: ${scanShown ? 'yes' : (includeLiveScan && lidarScanSnapshot && lidarScanSnapshot.available ? 'no (frames differ)' : 'n/a')} |
+          resolution: ${resolution.toFixed(2)} m |
+          occupied cells: ${stats.occupied_cells ?? 0} |
+          scans processed: ${stats.scans_processed ?? 0} |
+          live detections: ${stats.active_detections ?? detections.length} |
+          saved detections: ${persistedDetections.length} |
+          rooms: ${roomItems.length} |
+          planned path: ${plannedPath.length ? `${plannedPath.length} waypoints` : 'none'} |
+          live scan points: ${scanShown ? (lidarScanSnapshot.num_points ?? 0) : 0} |
+          robot: ${robot && Number.isFinite(Number(robot.x)) && Number.isFinite(Number(robot.y))
+            ? `(${Number(robot.x).toFixed(2)}, ${Number(robot.y).toFixed(2)})`
+            : 'unknown'}
+        </div>
+      `;
+
+      const isCustomPathClickMode = customPathMode && viewportKey === 'map';
+      const isClickToPlanMode = clickToPlanMode && viewportKey === 'map';
+      const isRoomClickMode = roomMarkingMode && viewportKey === 'map';
+      const isClickMode = isCustomPathClickMode || isClickToPlanMode || isRoomClickMode;
+      const customPointsOverlay = (viewportKey === 'map' && customPathPoints.length > 0)
+        ? customPathPoints.map((p, i) => {
+            const px = scaleX(p.x);
+            const py = scaleY(p.y);
+            const label = i === 0 ? 'Start' : 'End';
+            const color = i === 0 ? '#3b82f6' : '#8b5cf6';
+            return `<circle cx="${px}" cy="${py}" r="8" fill="${color}" stroke="#fff" stroke-width="2.5"><title>${label} (${p.x.toFixed(2)}, ${p.y.toFixed(2)})</title></circle>`;
+          }).join('')
+        : '';
+      const roomDraftColors = ['#059669', '#16a34a', '#84cc16', '#ca8a04'];
+      const roomDraftPointsOverlay = (viewportKey === 'map' && roomDraftPoints.length > 0)
+        ? roomDraftPoints.map((p, i) => {
+            const px = scaleX(p.x);
+            const py = scaleY(p.y);
+            return `<circle cx="${px}" cy="${py}" r="7" fill="${roomDraftColors[i] || '#16a34a'}" stroke="#fff" stroke-width="2"><title>room corner ${i + 1}</title></circle>`;
+          }).join('')
+        : '';
+
+      const zoomedWidth = Math.round(width * occupancyMapZoom);
+      const zoomedHeight = Math.round(height * occupancyMapZoom);
+      return `
+        <div>
+          ${renderOccupancyMapZoomControls()}
+          <div
+            class="zoom-viewport"
+            id="zoom-viewport-${viewportKey}"
+            onscroll="rememberOccupancyMapScroll('${viewportKey}')"
+            onwheel="handleOccupancyMapWheel(event)"
+            title="Use Ctrl + mouse wheel or the buttons to zoom"
+          >
+            <div class="zoom-stage">
+              <svg class="map-svg zoomable" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="width:${zoomedWidth}px;height:${zoomedHeight}px;${isClickMode ? 'cursor:crosshair;' : ''}" ${isClickMode ? `onclick="handleMapSvgClick(event, '${viewportKey}')"` : ''}>${base.axes}${base.gridImageUrl ? `<image href="${base.gridImageUrl}" x="${padding}" y="${padding}" width="${drawableWidth}" height="${drawableHeight}" preserveAspectRatio="none" />` : ''}${scanOverlay}${plannedPathOverlay}${plannedEndpointsOverlay}${persistedDetectionOverlay}${roomOverlay}${robotOverlay}${detectionOverlay}${customPointsOverlay}${roomDraftPointsOverlay}</svg>
+            </div>
+          </div>
+          ${summary}
+        </div>
+      `;
+    }
+
+    function focusScene(sceneId) {
+      selectedSceneId = sceneId;
+      const scene = scenes.find(s => s.id === sceneId);
+      const sceneInteractions = interactions.filter(i => i.scene_id === sceneId);
+      if (!scene) {
+        updateEarlierSceneButton();
+        return;
+      }
+      document.getElementById('details-panel').style.display = '';
+      document.getElementById('detailTitle').textContent = `Scene ${scene.id}`;
+      document.getElementById('details').innerHTML = `
+        <div class="mb-3">
+          <div><strong>Caption:</strong> ${scene.caption || '(no caption)'}</div>
+          <div class="muted">timestamp: ${scene.timestamp ? new Date(scene.timestamp).toLocaleString() : '-'}</div>
+          <div class="muted">position: (${scene.x ?? '-'}, ${scene.y ?? '-'})</div>
+        </div>
+        <div class="mb-4">
+          ${scene.original_image_url || scene.stitched_image_url
+            ? `<div style="display:flex;gap:8px;flex-wrap:wrap;">
+                ${scene.original_image_url ? `<div style="flex:1;min-width:140px;"><div class="muted" style="font-size:10px;">original</div><img src="${scene.original_image_url}" alt="Scene ${scene.id} original" class="scene-preview clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(scene.original_image_url)}', 'Scene ${scene.id} (original)')" /></div>` : ''}
+                ${scene.stitched_image_url ? `<div style="flex:1;min-width:140px;"><div class="muted" style="font-size:10px;">stitched</div><img src="${scene.stitched_image_url}" alt="Scene ${scene.id} stitched" class="scene-preview clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(scene.stitched_image_url)}', 'Scene ${scene.id} (stitched)')" /></div>` : ''}
+               </div>`
+            : '<div class="text-muted">No annotated scene image stored for this scene.</div>'}
+        </div>
+        <div>
+          <h5>Interactions</h5>
+          ${sceneInteractions.length ? sceneInteractions.map(renderSceneInteractionCard).join('') : '<div class="text-muted">No interactions stored for this scene.</div>'}
+        </div>
+      `;
+      updateEarlierSceneButton();
+    }
+
+    function getSortedScenes() {
+      const filterEl = document.getElementById('filter-with-description');
+      const filterActive = filterEl && filterEl.checked;
+      return [...scenes]
+        .filter(s => !filterActive || (s.caption && s.caption.trim()))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    }
+
+    function focusEarlierScene() {
+      const sorted = getSortedScenes();
+      const currentIndex = sorted.findIndex(s => s.id === selectedSceneId);
+      if (currentIndex >= 0 && currentIndex + 1 < sorted.length) {
+        const earlierScene = sorted[currentIndex + 1];
+        focusScene(earlierScene.id);
+        const row = document.querySelector(`tr[onclick="focusScene(${earlierScene.id})"]`);
+        if (row) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    }
+
+    function updateEarlierSceneButton() {
+      const btn = document.getElementById('earlier-scene-btn');
+      if (!btn) return;
+      if (currentTab !== 'scenes' || selectedSceneId === null) {
+        btn.disabled = true;
+        return;
+      }
+      const sorted = getSortedScenes();
+      const currentIndex = sorted.findIndex(s => s.id === selectedSceneId);
+      btn.disabled = !(currentIndex >= 0 && currentIndex + 1 < sorted.length);
+    }
+
+    function showInteraction(interactionId) {
+      const interaction = interactions.find(i => i.id === interactionId);
+      if (!interaction) {
+        return;
+      }
+      document.getElementById('details-panel').style.display = '';
+      document.getElementById('detailTitle').textContent = `Interaction ${interaction.id}`;
+      document.getElementById('details').innerHTML = renderInteractionDetail(interaction);
+    }
+
+    function renderInteractionCard(interaction) {
+      return `
+        <div class="item" onclick="showInteraction(${interaction.id})">
+          <div><strong>${interaction.caption || interaction.action || 'interaction'}</strong></div>
+          <div class="muted">action: ${interaction.action || '-'}</div>
+          <div class="muted">linked objects: ${interaction.objects.length}</div>
+        </div>
+      `;
+    }
+
+    function renderSceneInteractionCard(interaction) {
+      return `
+        <div class="item">
+          <div class="d-flex justify-content-between align-items-start gap-3">
+            <div>
+              <div><strong>${interaction.caption || interaction.action || 'interaction'}</strong></div>
+              <div class="muted">action: ${interaction.action || '-'}</div>
+              <div class="muted">linked objects: ${interaction.objects.length}</div>
+            </div>
+            <button class="btn btn-sm btn-outline-primary" onclick="showInteraction(${interaction.id})">Open</button>
+          </div>
+          <div class="thumb-grid mt-3">
+            ${interaction.objects.map(obj => `
+              <div class="thumb-card">
+                <img src="${obj.image_url}" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(obj.image_url)}', '${escapeHtml(obj.class_name ? `${obj.class_name}` : 'object')}')" />
+                <div><strong>${obj.class_name ? `${obj.class_name}` : 'object'}</strong></div>
+                <div class="muted">cluster: ${obj.object_id}</div>
+                <div class="muted">track: ${obj.yolo_track_id ?? '-'}</div>
+                <div class="muted">obs #${obj.observation_id}</div>
+              </div>
+            `).join('') || '<div class="text-muted">No linked observations.</div>'}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderInteractionDetail(interaction) {
+      return `
+        <div class="mb-3">
+          <div><strong>${interaction.caption || interaction.action || 'interaction'}</strong></div>
+          <div class="muted">action: ${interaction.action || '-'}</div>
+          <div class="muted">scene: ${interaction.scene_id ?? '-'}</div>
+          <div class="muted">model source: ${interaction.model_source || '-'}</div>
+          <div class="muted">timestamp: ${(interaction.scene_timestamp || interaction.created_at) ? new Date(interaction.scene_timestamp || interaction.created_at).toLocaleString() : '-'}</div>
+        </div>
+        ${interaction.scene_id ? `
+          <div class="mb-4">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:140px;"><div class="muted" style="font-size:10px;">original</div><img src="/api/scenes/${interaction.scene_id}/original_image" alt="Scene ${interaction.scene_id} original" class="scene-preview" onerror="this.style.display='none';this.parentElement.style.display='none';" /></div>
+              <div style="flex:1;min-width:140px;"><div class="muted" style="font-size:10px;">stitched</div><img src="/api/scenes/${interaction.scene_id}/stitched_image" alt="Scene ${interaction.scene_id} stitched" class="scene-preview" onerror="this.style.display='none';this.parentElement.style.display='none';" /></div>
+            </div>
+          </div>
+        ` : ''}
+        <div class="thumb-grid">
+          ${interaction.objects.map(obj => `
+            <div class="thumb-card">
+              <img src="${obj.image_url}" class="img-fluid clickable-image" loading="lazy" decoding="async" onclick="openImageModal('${escapeHtml(obj.image_url)}', '${escapeHtml(obj.class_name ? `${obj.class_name}` : 'object')}')" />
+              <div><strong>${obj.class_name ? `${obj.class_name}` : 'object'}</strong></div>
+              <div class="muted">cluster: ${obj.object_id}</div>
+              <div class="muted">track: ${obj.yolo_track_id ?? '-'}</div>
+              <div class="muted">obs #${obj.observation_id}</div>
+            </div>
+          `).join('') || '<div class="text-muted">No linked observations.</div>'}
+        </div>
+        ${(interaction.subject_bbox || interaction.object_bbox) ? `
+          <div class="mt-3">
+            <div class="muted">subject bbox: ${interaction.subject_bbox ? JSON.stringify(interaction.subject_bbox) : '-'}</div>
+            <div class="muted">object bbox: ${interaction.object_bbox ? JSON.stringify(interaction.object_bbox) : '-'}</div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function initialTab() {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || '{{ active_page|default("scenes") }}';
+      const knownTabs = new Set(['scenes', 'objects', 'persons', 'interactions', 'map', 'robot_view']);
+      return knownTabs.has(tab) ? tab : 'scenes';
+    }
+    function yawFromQuaternion(q) {
+      if (!q) return 0.0;
+      return Math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z));
+    }
+
+    function adjustRobotViewRange(delta) {
+      robotViewRange = Math.max(2, Math.min(50, robotViewRange + delta));
+      renderRobotViewPanel();
+    }
+
+    function renderRobotViewPanel() {
+      const container = document.getElementById('robot-view-content');
+      if (!container) return;
+
+      const robot = slamRobotPose && slamRobotPose.position && Number.isFinite(Number(slamRobotPose.position.x))
+        ? {
+            x: Number(slamRobotPose.position.x),
+            y: Number(slamRobotPose.position.y),
+            z: Number(slamRobotPose.position.z),
+            yaw: yawFromQuaternion(slamRobotPose.orientation),
+          }
+        : (lidarOccupancyMap && lidarOccupancyMap.available ? lidarOccupancyMap.robot : null);
+      const liveDetections = lidarOccupancyMap && lidarOccupancyMap.available && Array.isArray(lidarOccupancyMap.detections)
+        ? lidarOccupancyMap.detections
+        : [];
+
+      // Most recent observation per DynoSAM object that has a valid location and is fresh (< 30 s old).
+      // observationTopoObservations is sorted DESC, so the first hit per object is the most recent.
+      const nowMs = Date.now();
+      const dynosamByObject = new Map();
+      for (const obs of observationTopoObservations) {
+        if (!Number.isFinite(Number(obs.x)) || !Number.isFinite(Number(obs.y))) continue;
+        if (obs.created_at && (nowMs - new Date(obs.created_at).getTime()) > 30000) continue;
+        if (!dynosamByObject.has(obs.object_id)) {
+          dynosamByObject.set(obs.object_id, obs);
+        }
+      }
+      const dynosamObservations = Array.from(dynosamByObject.values());
+
+      if (!robot || !Number.isFinite(Number(robot.x)) || !Number.isFinite(Number(robot.y))) {
+        container.innerHTML = `
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="muted">Robot position</div>
+              <div><strong>Unknown</strong></div>
+            </div>
+            <div class="stat-card">
+              <div class="muted">DynoSAM objects</div>
+              <div><strong>${dynosamObservations.length}</strong></div>
+            </div>
+          </div>
+          <div class="map-card">
+            <div class="text-muted">No robot position available yet. Waiting for lidar map data...</div>
+          </div>
+        `;
+        return;
+      }
+
+      const robotX = Number(robot.x);
+      const robotY = Number(robot.y);
+      const robotZ = Number(robot.z ?? 0);
+      const robotYaw = Number.isFinite(Number(robot.yaw)) ? Number(robot.yaw) : 0;
+      const range = robotViewRange;
+
+      const svgSize = 600;
+      const padding = 50;
+      const drawSize = svgSize - padding * 2;
+
+      // obs.x/y are world coordinates in spot/odom.
+      // Convert world delta into the robot body frame:
+      //   body.x = forward
+      //   body.y = left
+      const worldToRobot = (worldX, worldY) => {
+        const dx = Number(worldX) - robotX;
+        const dy = Number(worldY) - robotY;
+        const fwd = Math.cos(robotYaw) * dx + Math.sin(robotYaw) * dy;
+        const left = -Math.sin(robotYaw) * dx + Math.cos(robotYaw) * dy;
+        return { fwd, left, right: -left };
+      };
+
+      const toSvgX = right => padding + ((range + right) / (2 * range)) * drawSize;
+      const toSvgY = fwd => padding + ((range - fwd) / (2 * range)) * drawSize;
+
+      const cx0 = toSvgX(0);
+      const cy0 = toSvgY(0);
+
+      // Range rings
+      let rings = '';
+      for (const r of [2, 4, 6, 8, 10, 15, 20, 30, 50].filter(r => r < range)) {
+        const svgR = (r / (2 * range)) * drawSize;
+        rings += `<circle cx="${cx0}" cy="${cy0}" r="${svgR}" fill="none" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="4,4" />`;
+        rings += `<text x="${(cx0 + svgR + 3).toFixed(1)}" y="${(cy0 + 4).toFixed(1)}" font-size="9" fill="#94a3b8">${r}m</text>`;
+      }
+      // Outer ring at exact range
+      const outerR = (range / (2 * range)) * drawSize;
+      rings += `<circle cx="${cx0}" cy="${cy0}" r="${outerR}" fill="none" stroke="#cbd5e1" stroke-width="1.5" />`;
+
+      // Axes are robot-centric after rotating world coordinates by robot yaw.
+      const axes = `
+        <line x1="${padding}" y1="${cy0.toFixed(1)}" x2="${svgSize - padding}" y2="${cy0.toFixed(1)}" stroke="#cbd5e1" stroke-width="1" />
+        <line x1="${cx0.toFixed(1)}" y1="${padding}" x2="${cx0.toFixed(1)}" y2="${svgSize - padding}" stroke="#cbd5e1" stroke-width="1" />
+        <text x="${svgSize - padding - 2}" y="${(cy0 - 5).toFixed(1)}" font-size="10" fill="#64748b" text-anchor="end">Right</text>
+        <text x="${(padding + 2).toFixed(1)}" y="${(cy0 - 5).toFixed(1)}" font-size="10" fill="#64748b">Left</text>
+        <text x="${(cx0 + 4).toFixed(1)}" y="${(padding + 12).toFixed(1)}" font-size="10" fill="#64748b">Fwd</text>
+        <text x="${(cx0 + 4).toFixed(1)}" y="${(svgSize - padding - 4).toFixed(1)}" font-size="10" fill="#64748b">Back</text>
+        <text x="${(svgSize - padding - 2).toFixed(1)}" y="${(cy0 + 14).toFixed(1)}" font-size="9" fill="#94a3b8" text-anchor="end">+${range.toFixed(0)}m</text>
+        <text x="${(padding + 2).toFixed(1)}" y="${(cy0 + 14).toFixed(1)}" font-size="9" fill="#94a3b8">+${range.toFixed(0)}m</text>
+        <text x="${(cx0 + 4).toFixed(1)}" y="${(padding + 22).toFixed(1)}" font-size="9" fill="#94a3b8">+${range.toFixed(0)}m</text>
+        <text x="${(cx0 + 4).toFixed(1)}" y="${(svgSize - padding - 14).toFixed(1)}" font-size="9" fill="#94a3b8">+${range.toFixed(0)}m</text>
+      `;
+
+      // Robot box at center (pointing up = forward in robot frame)
+      const robotSvg = `
+        <rect x="${(cx0 - 13).toFixed(1)}" y="${(cy0 - 10).toFixed(1)}" width="26" height="20" rx="4" fill="#f59e0b" stroke="#b45309" stroke-width="2" />
+        <polygon points="${cx0.toFixed(1)},${(cy0 - 18).toFixed(1)} ${(cx0 - 9).toFixed(1)},${(cy0 - 8).toFixed(1)} ${(cx0 + 9).toFixed(1)},${(cy0 - 8).toFixed(1)}" fill="#b45309" />
+        <text x="${cx0.toFixed(1)}" y="${(cy0 + 24).toFixed(1)}" font-size="11" fill="#92400e" text-anchor="middle" font-weight="bold">ROBOT</text>
+        <text x="${cx0.toFixed(1)}" y="${(cy0 + 36).toFixed(1)}" font-size="9" fill="#78350f" text-anchor="middle">(${robotX.toFixed(2)}, ${robotY.toFixed(2)}, ${robotZ.toFixed(2)}) yaw ${robotYaw.toFixed(2)}</text>
+      `;
+
+      // DynoSAM tracked objects (blue) — with SVG thumbnails
+      let dynosamSvg = '';
+      let dynoInView = 0;
+      const thumbW = 44;
+      const thumbH = 34;
+      for (const obs of dynosamObservations) {
+        if (!Number.isFinite(Number(obs.x)) || !Number.isFinite(Number(obs.y))) continue;
+        const { fwd, left: lat, right } = worldToRobot(obs.x, obs.y);
+        if (Math.abs(fwd) > range || Math.abs(lat) > range) continue;
+        dynoInView++;
+        const px = toSvgX(right);
+        const py = toSvgY(fwd);
+        const label = obs.class_name || obs.object_id;
+        const dist = Math.hypot(fwd, lat).toFixed(1);
+        const imageUrl = `/api/observations/${obs.id}/image`;
+        const safeLabel = escapeHtml(String(label));
+        const dfwd = fwd.toFixed(1);
+        const dright = right.toFixed(1);
+        const safeTitle = escapeHtml(`${label} | obs ${obs.id} | fwd ${dfwd}m right ${dright}m | dist ${dist}m`);
+        // Place thumbnail above-right, flipping left if too close to the right edge
+        const thumbX = px + 10 > svgSize - padding - thumbW - 4 ? px - thumbW - 14 : px + 10;
+        const thumbY = Math.max(padding + 2, py - thumbH - 16);
+        dynosamSvg += `
+          <line x1="${px.toFixed(1)}" y1="${(py - 7).toFixed(1)}" x2="${(thumbX + thumbW / 2).toFixed(1)}" y2="${(thumbY + thumbH + 2).toFixed(1)}" stroke="rgba(37,99,235,0.5)" stroke-width="1.5" />
+          <rect x="${(thumbX - 2).toFixed(1)}" y="${(thumbY - 2).toFixed(1)}" width="${thumbW + 4}" height="${thumbH + 4}" fill="rgba(255,255,255,0.96)" stroke="#2563eb" stroke-width="1.5" rx="3" ry="3">
+            <title>${safeTitle}</title>
+          </rect>
+          <image href="${imageUrl}" x="${thumbX.toFixed(1)}" y="${thumbY.toFixed(1)}" width="${thumbW}" height="${thumbH}" preserveAspectRatio="xMidYMid slice" style="cursor:zoom-in" onclick="openImageModal('${imageUrl}', '${safeTitle}')" />
+          <circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="7" fill="#2563eb" fill-opacity="0.85" stroke="#ffffff" stroke-width="1.5">
+            <title>${safeLabel} | object ${obs.object_id} | fwd ${dfwd}m right ${dright}m | dist ${dist}m</title>
+          </circle>
+          <text x="${px.toFixed(1)}" y="${(py + 20).toFixed(1)}" font-size="9" fill="#1e40af" text-anchor="middle" font-weight="bold">${safeLabel}</text>
+          <text x="${px.toFixed(1)}" y="${(py + 30).toFixed(1)}" font-size="9" fill="#1d4ed8" text-anchor="middle">F${dfwd} R${dright} ${dist}m</text>
+        `;
+      }
+
+      // Object list table — DynoSAM objects and live YOLO detections
+      const allInView = [];
+      for (const obs of dynosamObservations) {
+        if (!Number.isFinite(Number(obs.x)) || !Number.isFinite(Number(obs.y))) continue;
+        const { fwd, left: lat, right } = worldToRobot(obs.x, obs.y);
+        if (Math.abs(fwd) > range || Math.abs(lat) > range) continue;
+        const imageUrl = `/api/observations/${obs.id}/image`;
+        allInView.push({
+          type: 'DynoSAM',
+          label: obs.class_name || obs.object_id,
+          fwd,
+          right,
+          dist: Math.hypot(fwd, lat),
+          extra: `object ${obs.object_id}`,
+          imageUrl,
+          imageTitle: escapeHtml(`${obs.class_name || obs.object_id} | obs ${obs.id}`),
+        });
+      }
+      for (const det of liveDetections) {
+        if (!Number.isFinite(Number(det.x)) || !Number.isFinite(Number(det.y))) continue;
+        const { fwd, left: lat, right } = worldToRobot(det.x, det.y);
+        if (Math.abs(fwd) > range || Math.abs(lat) > range) continue;
+        const label = det.class_name || (det.class_id >= 0 ? `class ${det.class_id}` : 'detection');
+        const score = Number.isFinite(det.score) ? ` (${(det.score * 100).toFixed(0)}%)` : '';
+        allInView.push({
+          type: 'YOLO',
+          label,
+          fwd,
+          right,
+          dist: Math.hypot(fwd, lat),
+          extra: `track ${det.track_id ?? '-'}${score}`,
+          imageUrl: null,
+          imageTitle: '',
+        });
+      }
+      allInView.sort((a, b) => a.dist - b.dist);
+
+      const tableRows = allInView.map(o => `
+        <tr>
+          <td><span class="badge" style="background:${o.type === 'YOLO' ? '#dc2626' : '#2563eb'}">${o.type}</span></td>
+          <td>
+            ${o.imageUrl
+              ? `<img src="${o.imageUrl}" alt="${o.imageTitle}" title="${o.imageTitle}" loading="lazy" decoding="async"
+                   style="width:56px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1;cursor:zoom-in;vertical-align:middle;margin-right:6px;"
+                   onclick="openImageModal('${o.imageUrl}', '${o.imageTitle}')" />`
+              : '<span style="display:inline-block;width:56px;height:42px;background:#f1f5f9;border-radius:4px;border:1px solid #e2e8f0;vertical-align:middle;margin-right:6px;"></span>'}
+            ${escapeHtml(String(o.label))}
+          </td>
+          <td>${o.fwd.toFixed(2)}</td>
+          <td>${o.right.toFixed(2)}</td>
+          <td>${o.dist.toFixed(2)}</td>
+          <td class="muted">${o.extra}</td>
+        </tr>
+      `).join('');
+
+      container.innerHTML = `
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="muted">Robot position (world)</div>
+            <div><strong>(${robotX.toFixed(3)}, ${robotY.toFixed(3)}, ${robotZ.toFixed(3)})</strong></div>
+          </div>
+          <div class="stat-card">
+            <div class="muted">DynoSAM objects</div>
+            <div><strong>${dynoInView}</strong> in view / ${dynosamObservations.length} total</div>
+          </div>
+          <div class="stat-card">
+            <div class="muted">YOLO detections</div>
+            <div><strong>${liveDetections.length}</strong> live</div>
+          </div>
+          <div class="stat-card">
+            <div class="muted">View range</div>
+            <div><strong>±${range}m</strong></div>
+          </div>
+        </div>
+        <div class="map-card">
+          <h5>Video Recording</h5>
+          <div class="map-toolbar" style="margin-bottom:8px;">
+            <button id="btnStartVideo" class="btn btn-sm btn-danger" onclick="startVideoRecording()">⏺ Start</button>
+            <button id="btnStopVideo" class="btn btn-sm btn-outline-secondary" onclick="stopVideoRecording()">⏹ Stop</button>
+            <span id="videoRecordStatus" class="zoom-label" style="min-width:180px;">Not recording</span>
+          </div>
+        </div>
+        <div class="map-card">
+          <h5>Robot-Centric View</h5>
+          <div class="map-toolbar">
+            <button class="btn btn-sm btn-outline-secondary" onclick="adjustRobotViewRange(-2)">− Zoom in</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="adjustRobotViewRange(2)">+ Zoom out</button>
+            <span class="zoom-label">±${range}m</span>
+          </div>
+          <div style="overflow:auto;">
+            <svg viewBox="0 0 ${svgSize} ${svgSize}" width="${svgSize}" height="${svgSize}" style="display:block;max-width:100%;border:1px solid #e2e8f0;border-radius:12px;background:linear-gradient(180deg,#fbfbfb,#f1f4f6);">
+              ${rings}${axes}${dynosamSvg}${robotSvg}
+            </svg>
+          </div>
+          <div class="map-legend">
+            <div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#2563eb;margin-right:4px;vertical-align:middle;"></span>DynoSAM tracked objects — thumbnail = most recent observation image (click to enlarge)</div>
+            <div><span style="display:inline-block;width:14px;height:12px;background:#f59e0b;margin-right:4px;vertical-align:middle;border-radius:2px;"></span>Robot (arrow = +Y world direction)</div>
+            <div>Frame: world positions in spot/odom, rotated into the robot body frame using current robot yaw. Coordinates: F=forward, R=right. Updates every 3 s.</div>
+          </div>
+        </div>
+        ${allInView.length > 0 ? `
+        <div class="map-card">
+          <h5>Detected Objects in View — sorted by distance</h5>
+          <table class="table table-sm table-hover align-middle">
+            <thead>
+              <tr><th>Source</th><th>Image &amp; Label</th><th>Forward (m)</th><th>Right (m)</th><th>Dist (m)</th><th>Info</th></tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>` : ''}
+      `;
+    }
+
+    function renderCustomPathToolbar() {
+      if (clickToPlanMode) {
+        const errorHtml = clickToPlanError
+          ? `<span class="text-danger" style="font-size:12px;">${escapeHtml(clickToPlanError)}</span>`
+          : '';
+        return `
+          <div class="map-toolbar" style="gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+            <button class="btn btn-sm btn-primary" onclick="toggleClickToPlanMode()">Cancel</button>
+            <span class="muted">Click any point on the map to plan a path from the robot.</span>
+            ${errorHtml}
+          </div>
+        `;
+      }
+      if (!customPathMode) {
+        const errorHtml = customPathError
+          ? `<span class="text-danger" style="font-size:12px;">${escapeHtml(customPathError)}</span>`
+          : '';
+        return errorHtml ? `<div class="map-toolbar" style="gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">${errorHtml}</div>` : '';
+      }
+      const statusMsg = customPathPoints.length === 0
+        ? 'Click the <strong>start point</strong> on the map'
+        : 'Click the <strong>end point</strong> on the map';
+      return `
+        <div class="map-toolbar" style="gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn btn-sm btn-primary" onclick="toggleCustomPathMode()">Cancel</button>
+          <span class="muted">${statusMsg}</span>
+        </div>
+      `;
+    }
+
+    function renderRoomMarkingToolbar() {
+      const activeMode = toolboxMapPersistence?.active_mode || 'idle';
+      const canSelect = activeMode === 'frozen';
+      const draftReady = roomDraftPoints.length === 4;
+      const draftInProgress = roomDraftPoints.length > 0 && roomDraftPoints.length < 4;
+      const placeholderName = `Room ${roomDrafts.length + 1}`;
+      const nameInput = roomMarkingMode
+        ? `<input id="room-draft-name" class="form-control form-control-sm" style="width:auto;min-width:160px;" placeholder="${escapeHtml(placeholderName)}" value="${escapeHtml(roomDraftName)}" oninput="updateRoomDraftName(this.value)" />`
+        : '';
+      const clearButton = (roomMarkingMode && (draftInProgress || draftReady))
+        ? `<button class="btn btn-sm btn-outline-danger" onclick="clearRoomDraftPoints()">Clear points</button>`
+        : '';
+      const addButton = (roomMarkingMode && draftReady)
+        ? `<button class="btn btn-sm btn-primary" onclick="addDraftRoom()">Add room</button>`
+        : '';
+      const saveButton = (roomMarkingMode && roomDrafts.length > 0)
+        ? `<button class="btn btn-sm btn-outline-primary" onclick="saveMarkedRooms()">Save rooms</button>`
+        : '';
+      return `
+        <div class="map-toolbar" style="gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+          <button class="btn btn-sm btn-outline-primary" onclick="startRoomMarking()" ${canSelect ? '' : 'disabled'}>${roomMarkingMode ? 'Cancel room selection' : 'Select rooms'}</button>
+          ${nameInput}
+          ${addButton}
+          ${clearButton}
+          ${saveButton}
+          ${roomMarkingMode && !draftReady
+            ? `<span class="muted">Click ${4 - roomDraftPoints.length} more corner(s) on the map.</span>`
+            : roomMarkingMode && draftReady
+              ? `<span class="muted">Name the room if needed, then click Add room.</span>`
+              : ''}
+          ${roomDraftError ? `<span class="text-danger" style="font-size:12px;">${escapeHtml(roomDraftError)}</span>` : ''}
+        </div>
+      `;
+    }
+
+    function toggleCustomPathMode() {
+      customPathMode = !customPathMode;
+      customPathPoints = [];
+      customPathError = null;
+      if (customPathMode) {
+        clickToPlanMode = false;
+        clickToPlanError = null;
+        roomMarkingMode = false;
+        roomDraftPoints = [];
+        roomDraftError = null;
+      }
+      renderMapPanel();
+    }
+
+    function toggleClickToPlanMode() {
+      clickToPlanMode = !clickToPlanMode;
+      clickToPlanError = null;
+      if (clickToPlanMode) {
+        customPathMode = false;
+        customPathPoints = [];
+        customPathError = null;
+        roomMarkingMode = false;
+        roomDraftPoints = [];
+        roomDraftError = null;
+      }
+      renderMapPanel();
+    }
+
+    function handleMapSvgClick(event, viewportKey) {
+      if (!customPathMode && !clickToPlanMode && !roomMarkingMode) return;
+      const svgEl = event.currentTarget;
+      const pt = svgEl.createSVGPoint();
+      pt.x = event.clientX;
+      pt.y = event.clientY;
+      const svgPt = pt.matrixTransform(svgEl.getScreenCTM().inverse());
+      const params = mapCoordParams[viewportKey];
+      if (!params) return;
+      const { minX, minY, maxX, maxY, width, height, padding, drawableWidth, drawableHeight } = params;
+      const worldX = (svgPt.x - padding) / drawableWidth * (maxX - minX) + minX;
+      const worldY = (height - padding - svgPt.y) / drawableHeight * (maxY - minY) + minY;
+      if (roomMarkingMode && viewportKey === 'map') {
+        if (roomDraftPoints.length >= 4) {
+          return;
+        }
+        roomDraftPoints = [...roomDraftPoints, { x: worldX, y: worldY }];
+        roomDraftError = null;
+        if (currentTab === 'map') {
+          renderMapPanel();
+        }
+        return;
+      }
+      if (clickToPlanMode && viewportKey === 'map') {
+        planPathFromRobot(worldX, worldY);
+        return;
+      }
+      if (viewportKey !== 'map') return;
+      customPathPoints = [...customPathPoints, { x: worldX, y: worldY }];
+      if (customPathPoints.length >= 2) {
+        planCustomPath();
+      } else {
+        renderMapPanel();
+      }
+    }
+
+    async function planCustomPath() {
+      const [start, goal] = customPathPoints;
+      customPathMode = false;
+      customPathError = null;
+      renderMapPanel();
+      try {
+        const response = await fetch('/api/map/plan_custom_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start: { x: start.x, y: start.y }, goal: { x: goal.x, y: goal.y } }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Path planning failed');
+        }
+        plannedNavigation = payload;
+        customPathPoints = [];
+      } catch (err) {
+        customPathError = err.message || 'Path planning failed';
+        customPathPoints = [];
+      }
+      renderMapPanel();
+    }
+
+    async function planPathFromRobot(goalX, goalY) {
+      clickToPlanMode = false;
+      clickToPlanError = null;
+      renderMapPanel();
+      try {
+        const response = await fetch('/api/map/plan_custom_path', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ goal: { x: goalX, y: goalY } }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || 'Path planning failed');
+        }
+        plannedNavigation = payload;
+      } catch (err) {
+        clickToPlanError = err.message || 'Path planning failed';
+      }
+      renderMapPanel();
+    }
+
+    // Initialize
+    ensureMapRefreshLoop();
+    document.getElementById('scenes-panel').addEventListener('scroll', () => handleLazyPanelScroll('scenes'));
+    document.getElementById('objects-panel').addEventListener('scroll', () => handleLazyPanelScroll('objects'));
+    window.showTab = showTab;
+    window.focusScene = focusScene;
+    window.showObject = showObject;
+    window.showPerson = showPerson;
+    window.showInteraction = showInteraction;
+    window.openImageModal = openImageModal;
+    window.openPersistedDetectionModal = openPersistedDetectionModal;
+    window.planNavigationToModalDetection = planNavigationToModalDetection;
+    window.acceptPlannedNavigation = acceptPlannedNavigation;
+    window.closeImageModal = closeImageModal;
+    window.clearPlannedNavigation = clearPlannedNavigation;
+    window.togglePersistedDetectionImages = togglePersistedDetectionImages;
+    window.resetMapAndDetections = resetMapAndDetections;
+    window.toggleCustomPathMode = toggleCustomPathMode;
+    window.handleMapSvgClick = handleMapSvgClick;
+    window.toggleClickToPlanMode = toggleClickToPlanMode;
+    window.planPathFromRobot = planPathFromRobot;
+    window.adjustRobotViewRange = adjustRobotViewRange;
+
+    async function startVideoRecording() {
+      try {
+        const res = await fetch('/api/video/start', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        document.getElementById('videoRecordStatus').textContent = 'Starting…';
+        setTimeout(updateVideoRecordStatus, 500);
+      } catch (err) {
+        alert('Failed to start recording: ' + err.message);
+      }
+    }
+    async function stopVideoRecording() {
+      try {
+        const res = await fetch('/api/video/stop', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        document.getElementById('videoRecordStatus').textContent = 'Stopping…';
+        setTimeout(updateVideoRecordStatus, 500);
+      } catch (err) {
+        alert('Failed to stop recording: ' + err.message);
+      }
+    }
+    async function updateVideoRecordStatus() {
+      try {
+        const res = await fetch('/api/video/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const label = document.getElementById('videoRecordStatus');
+        if (!label) return;
+        if (data.state === 'recording') {
+          const frames = data.frames_recorded || 0;
+          label.textContent = `● Recording ${frames} frames`;
+          label.style.color = '#dc3545';
+        } else if (data.state === 'stopped') {
+          const file = data.filename || 'file';
+          label.textContent = `✓ Saved: ${file}`;
+          label.style.color = '#198754';
+        } else {
+          label.textContent = 'Not recording';
+          label.style.color = '#555';
+        }
+      } catch (e) {}
+    }
+    setInterval(updateVideoRecordStatus, 2000);
+
+    window.startVideoRecording = startVideoRecording;
+    window.stopVideoRecording = stopVideoRecording;
+    window.startRoomMarking = startRoomMarking;
+    window.saveMarkedRooms = saveMarkedRooms;
+    window.addDraftRoom = addDraftRoom;
+    window.clearRoomDraftPoints = clearRoomDraftPoints;
+    // Default to scenes tab
+    showTab(initialTab());
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

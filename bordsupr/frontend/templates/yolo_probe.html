@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOLO Probe</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f6f7fb; color: #1f2430; }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 380px 1fr; gap: 16px; align-items: start; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 8px; overflow: hidden; }
+    .panel-head { padding: 12px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 14px 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .probe-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 16px; }
+    .probe-card { border: 1px solid #d8dee8; border-radius: 8px; overflow: hidden; background: #fff; }
+    .probe-card.running { opacity: 0.6; }
+    .probe-card.hidden { display: none; }
+    .probe-img-wrap { position: relative; width: 100%; background: #eef2f7; }
+    .probe-img-wrap img { width: 100%; display: block; }
+    .probe-img-wrap canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .probe-card-footer { padding: 6px 8px; font-size: 11px; color: #637182; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mode-btn { cursor: pointer; padding: 5px 10px; border: 1px solid #d8dee8; border-radius: 6px; font-size: 12px; background: #fff; }
+    .mode-btn.active { background: #0b6e4f; color: #fff; border-color: #0b6e4f; }
+    .mode-options { display: none; }
+    .mode-options.visible { display: block; }
+    .runs-section { border-bottom: 1px solid #d8dee8; }
+    .runs-head { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #f4fbf8; cursor: pointer; user-select: none; font-size: 12px; }
+    .runs-head:hover { background: #e6f4ef; }
+    .runs-body { padding: 0; }
+    .runs-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .runs-table th { padding: 5px 8px; border-bottom: 1px solid #d8dee8; background: #fbfcff; color: #637182; font-weight: 600; text-align: left; }
+    .runs-table td { padding: 5px 8px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+    .runs-table tr:last-child td { border-bottom: none; }
+    .runs-table tr.active-run { background: #f4fbf8; }
+    .run-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+    .run-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-del { color: #637182; cursor: pointer; border: none; background: none; font-size: 14px; line-height: 1; padding: 0 2px; }
+    .run-del:hover { color: #dc3545; }
+    .stats-bar { display: flex; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #d8dee8; font-size: 12px; flex-wrap: wrap; align-items: center; }
+    .stat-item { display: flex; flex-direction: column; }
+    .stat-val { font-size: 18px; font-weight: 700; color: #0b6e4f; line-height: 1.2; }
+    .stat-lbl { color: #637182; }
+    .filter-pill { cursor: pointer; padding: 3px 10px; border: 1px solid #d8dee8; border-radius: 99px; font-size: 11px; background: #fff; white-space: nowrap; }
+    .filter-pill.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .probe-card.pinned { border-color: #f59e0b; box-shadow: 0 0 0 2px #fde68a; }
+    .pin-btn { position: absolute; top: 4px; right: 4px; z-index: 10; background: rgba(255,255,255,0.85); border: 1px solid #d8dee8; border-radius: 6px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; opacity: 0; transition: opacity 0.15s; pointer-events: auto; }
+    .probe-card:hover .pin-btn, .probe-card.pinned .pin-btn { opacity: 1; }
+    .probe-card.pinned .pin-btn { background: #fde68a; border-color: #f59e0b; }
+    .pin-divider { grid-column: 1/-1; display: flex; align-items: center; gap: 8px; padding: 4px 0; color: #637182; font-size: 11px; }
+    .pin-divider hr { flex: 1; border-color: #f59e0b; opacity: 0.5; margin: 0; }
+    @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-0">YOLO Probe</h5>
+        <div class="muted">Scan a folder, configure a pipeline, add runs to compare.</div>
+      </div>
+      <div class="panel-body">
+
+        <label class="form-label fw-semibold">Folder</label>
+        <div class="input-group input-group-sm mb-1">
+          <input id="folderInput" class="form-control" value="{{ video_publisher_default_frame_dir }}" placeholder="/path/to/images" />
+        </div>
+        <div class="d-flex gap-2 mb-3">
+          <div class="form-check form-check-inline mb-0 mt-1">
+            <input id="recursiveInput" class="form-check-input" type="checkbox" checked />
+            <label class="form-check-label" style="font-size:12px" for="recursiveInput">Recursive</label>
+          </div>
+          <input id="limitInput" class="form-control form-control-sm w-auto" type="number" value="100" min="1" max="2000" title="Max images" style="width:80px!important" />
+          <button class="btn btn-sm btn-outline-secondary flex-grow-1" onclick="scanFolder()">Scan</button>
+        </div>
+
+        <label class="form-label fw-semibold">YOLO Model</label>
+        <select id="modelSelect" class="form-select form-select-sm mb-1">
+          <option value="">Loading...</option>
+        </select>
+        <input id="modelPathInput" class="form-control form-control-sm mb-3" placeholder="Or enter model path manually" />
+
+        <label class="form-label fw-semibold">Detection</label>
+        <div class="row g-2 mb-1">
+          <div class="col-6">
+            <label class="form-label" style="font-size:11px">Confidence</label>
+            <input id="confInput" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.25" />
+          </div>
+          <div class="col-6">
+            <label class="form-label" style="font-size:11px">Max detections</label>
+            <input id="maxDetInput" class="form-control form-control-sm" type="number" min="1" max="500" value="30" />
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" style="font-size:11px">Class filter</label>
+          <select id="classPresetInput" class="form-select form-select-sm">
+            <option value="all">All classes</option>
+            <option value="persons">Persons only</option>
+            <option value="objects">Objects (no persons)</option>
+          </select>
+        </div>
+
+        <label class="form-label fw-semibold">Pipeline</label>
+        <div class="d-flex flex-wrap gap-1 mb-2">
+          <button class="mode-btn active" data-mode="standard" onclick="setMode('standard', this)">Standard</button>
+          <button class="mode-btn" data-mode="person_crop" onclick="setMode('person_crop', this)">Person→Crop</button>
+          <button class="mode-btn" data-mode="hand_crop" onclick="setMode('hand_crop', this)">Hand→Crop</button>
+          <button class="mode-btn" data-mode="sahi" onclick="setMode('sahi', this)">SAHI</button>
+          <button class="mode-btn" data-mode="preprocessed" onclick="setMode('preprocessed', this)">Preprocess</button>
+        </div>
+
+        <div id="opts-person_crop" class="mode-options mb-2">
+          <div class="rounded p-2" style="background:#f8fffe;border:1px solid #c8e6e0;font-size:12px">
+            <div class="fw-semibold mb-1">Person → Crop → Objects</div>
+            <label style="font-size:11px">Person model (blank = same)</label>
+            <select id="personModelSelect" class="form-select form-select-sm mb-1">
+              <option value="">Same as main model</option>
+            </select>
+            <div class="row g-2">
+              <div class="col-6">
+                <label style="font-size:11px">Person confidence</label>
+                <input id="personConfInput" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.35" />
+              </div>
+              <div class="col-6">
+                <label style="font-size:11px">Crop padding (px)</label>
+                <input id="personPadInput" class="form-control form-control-sm" type="number" min="0" max="300" value="30" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="opts-hand_crop" class="mode-options mb-2">
+          <div class="rounded p-2" style="background:#fff8f0;border:1px solid #f0c880;font-size:12px">
+            <div class="fw-semibold mb-1">Person → Hand Crop → Objects</div>
+            <div class="muted mb-2">Detect persons → find hands inside each person crop → run object YOLO on each hand region.</div>
+            <label style="font-size:11px">Person model (blank = main)</label>
+            <select id="handPersonModelSelect" class="form-select form-select-sm mb-1"><option value="">Same as main model</option></select>
+            <label style="font-size:11px">Hand model (blank = main)</label>
+            <select id="handModelSelect" class="form-select form-select-sm mb-1"><option value="">Same as main model</option></select>
+            <div class="row g-2 mb-1">
+              <div class="col-6">
+                <label style="font-size:11px">Person conf</label>
+                <input id="handPersonConfInput" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.35" />
+              </div>
+              <div class="col-6">
+                <label style="font-size:11px">Person pad (px)</label>
+                <input id="handPersonPadInput" class="form-control form-control-sm" type="number" min="0" max="300" value="30" />
+              </div>
+            </div>
+            <div class="row g-2 mb-1">
+              <div class="col-6">
+                <label style="font-size:11px">Hand conf</label>
+                <input id="handConfInput" class="form-control form-control-sm" type="number" min="0" max="1" step="0.01" value="0.25" />
+              </div>
+              <div class="col-6">
+                <label style="font-size:11px">Hand pad (px)</label>
+                <input id="handPadInput" class="form-control form-control-sm" type="number" min="0" max="300" value="20" />
+              </div>
+            </div>
+            <label style="font-size:11px">Hand proxy class ID <span class="muted">(hand_yolov8n: class 0 = hand; -1 = any class)</span></label>
+            <input id="handClassIdInput" class="form-control form-control-sm" type="number" min="-1" max="79" value="0" />
+          </div>
+        </div>
+
+        <div id="opts-sahi" class="mode-options mb-2">
+          <div class="rounded p-2" style="background:#f8f8ff;border:1px solid #d0d0f0;font-size:12px">
+            <div class="fw-semibold mb-1">Sliced Inference (SAHI)</div>
+            <div class="row g-2">
+              <div class="col-6">
+                <label style="font-size:11px">Slice size (px)</label>
+                <select id="sahiSliceInput" class="form-select form-select-sm">
+                  <option value="256">256</option>
+                  <option value="320" selected>320</option>
+                  <option value="416">416</option>
+                  <option value="512">512</option>
+                  <option value="640">640</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label style="font-size:11px">Overlap ratio</label>
+                <select id="sahiOverlapInput" class="form-select form-select-sm">
+                  <option value="0.1">0.1</option>
+                  <option value="0.2" selected>0.2</option>
+                  <option value="0.3">0.3</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="opts-preprocessed" class="mode-options mb-2">
+          <div class="rounded p-2" style="background:#fffbf0;border:1px solid #f0e0b0;font-size:12px">
+            <div class="fw-semibold mb-1">Image Preprocessing</div>
+            <div class="form-check mb-1">
+              <input id="ppClahe" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="ppClahe">CLAHE (local contrast)</label>
+            </div>
+            <div class="mb-1">
+              <label style="font-size:11px">Gamma (1.0 = off)</label>
+              <input id="ppGamma" class="form-control form-control-sm" type="number" min="0.1" max="5" step="0.1" value="1.0" />
+            </div>
+            <div class="form-check mb-1">
+              <input id="ppSharpen" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="ppSharpen">Mild sharpening</label>
+            </div>
+            <div class="form-check mb-1">
+              <input id="ppDenoise" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" for="ppDenoise">Denoising</label>
+            </div>
+            <div class="form-check">
+              <input id="ppAutoBrighten" class="form-check-input" type="checkbox" checked />
+              <label class="form-check-label" for="ppAutoBrighten">Auto-brighten dark images</label>
+            </div>
+          </div>
+        </div>
+
+        <div id="preprocess-extra" style="display:none">
+          <details class="mb-2">
+            <summary style="font-size:12px;cursor:pointer;color:#637182">+ Preprocessing (optional)</summary>
+            <div class="rounded p-2 mt-1" style="background:#fffbf0;border:1px solid #f0e0b0;font-size:12px">
+              <div class="form-check mb-1"><input id="ppClahe2" class="form-check-input" type="checkbox" /><label class="form-check-label" for="ppClahe2">CLAHE</label></div>
+              <div class="mb-1"><label style="font-size:11px">Gamma</label><input id="ppGamma2" class="form-control form-control-sm" type="number" min="0.1" max="5" step="0.1" value="1.0" /></div>
+              <div class="form-check mb-1"><input id="ppSharpen2" class="form-check-input" type="checkbox" /><label class="form-check-label" for="ppSharpen2">Sharpen</label></div>
+              <div class="form-check mb-1"><input id="ppDenoise2" class="form-check-input" type="checkbox" /><label class="form-check-label" for="ppDenoise2">Denoise</label></div>
+              <div class="form-check"><input id="ppAutoBrighten2" class="form-check-input" type="checkbox" checked /><label class="form-check-label" for="ppAutoBrighten2">Auto-brighten dark images</label></div>
+            </div>
+          </details>
+        </div>
+
+        <div class="form-check mb-3">
+          <input id="segInput" class="form-check-input" type="checkbox" />
+          <label class="form-check-label" style="font-size:12px" for="segInput">Segmentation masks</label>
+        </div>
+
+        <div class="d-grid mb-2">
+          <button id="runBtn" class="btn btn-success" onclick="runDetection()" disabled>Run &amp; Save</button>
+        </div>
+        <div id="status" class="muted">Scan a folder to begin.</div>
+      </div>
+    </section>
+
+    <section class="panel" id="resultsPanel">
+
+      <!-- Stats bar -->
+      <div class="stats-bar" id="statsBar" style="display:none">
+        <div class="stat-item"><span class="stat-val" id="statImages">0</span><span class="stat-lbl">images</span></div>
+        <div class="stat-item"><span class="stat-val" id="statRuns">0</span><span class="stat-lbl">runs</span></div>
+        <div class="stat-item"><span class="stat-val" id="statActive">0</span><span class="stat-lbl">shown</span></div>
+        <div class="stat-item"><span class="stat-val" id="statVisible">–</span><span class="stat-lbl">visible</span></div>
+        <div class="d-flex gap-2 align-items-center">
+          <button id="filterAnyDetBtn" class="filter-pill" onclick="toggleDetectionFilter()" title="Only show images with ≥1 detection in any active run">
+            🔍 Has detections
+          </button>
+          <button id="filterPersonBtn" class="filter-pill" onclick="togglePersonFilter()" title="Only show images with ≥1 person detection in any active run">
+            👤 Persons only
+          </button>
+          <button id="showPreprocessedBtn" class="filter-pill" onclick="toggleShowPreprocessed()" title="Swap card images to the preprocessed version (from the most recent run with preprocessing)">
+            🔆 Preprocessed
+          </button>
+          <button id="showCropsBtn" class="filter-pill" onclick="toggleShowCrops()" title="Draw dashed crop regions used for person/hand detection">
+            ✂️ Crops
+          </button>
+        </div>
+        <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectAllRuns()">All</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="selectNoneRuns()">None</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="clearAllRuns()">Clear runs</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="exportRuns()" title="Export runs to JSON">⬇ Export</button>
+          <label class="btn btn-sm btn-outline-secondary mb-0" title="Load runs from JSON">⬆ Import<input type="file" accept=".json" style="display:none" onchange="importRuns(event)" /></label>
+        </div>
+      </div>
+
+      <!-- Runs table -->
+      <div class="runs-section" id="runsSection" style="display:none">
+        <div class="runs-head" onclick="toggleRunsTable()">
+          <span id="runsToggleIcon">▼</span>
+          <span id="runsHeadLabel" class="fw-semibold">Runs (0)</span>
+          <span class="muted ms-2">Check runs to overlay on images</span>
+        </div>
+        <div class="runs-body" id="runsBody">
+          <table class="runs-table">
+            <thead>
+              <tr>
+                <th style="width:26px"></th>
+                <th style="width:14px"></th>
+                <th>Label</th>
+                <th style="width:55px;text-align:right">Dets</th>
+                <th style="width:60px">Time</th>
+                <th style="width:24px"></th>
+              </tr>
+            </thead>
+            <tbody id="runsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Image grid -->
+      <div id="probeGrid" class="probe-grid">
+        <div class="muted p-4">Scan a folder and run detection.</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+  let currentMode = 'standard';
+  let scannedImages = [];
+  let runs = [];
+  let activeRunIds = new Set();
+  let runsTableOpen = true;
+  let filterPersons = false;
+  let filterAnyDet = false;
+  let pinnedImages = new Set(); // paths
+  let showPreprocessed = false;
+  let showCropRegions = false;
+  // cache: path -> objectURL of preprocessed image
+  const _preprocessedCache = {};
+
+  const RUN_COLORS = ['#e74c3c','#2980b9','#27ae60','#f39c12','#8e44ad','#16a085','#c0392b','#2c3e50','#1abc9c','#e67e22'];
+  const LS_KEY = 'yolo_probe_session';
+
+  function classColor(classId) {
+    const hue = (classId * 47 + 83) % 360;
+    return `hsl(${hue},70%,45%)`;
+  }
+  function detColor(det, runColor) {
+    if (runColor) return runColor;
+    if (det.source === 'person') return '#2563eb';
+    if (det.source === 'hand') return '#e11d48';
+    if (det.source === 'hand_object') return '#ea580c';
+    if (det.source === 'crop_object') return '#f59e0b';
+    if (det.source === 'sahi') return '#7c3aed';
+    return classColor(det.class_id ?? 0);
+  }
+  function isPerson(det) {
+    if (det.source === 'hand' || det.source === 'hand_object') return false;
+    return det.class_id === 0 || (det.class_name || '').toLowerCase() === 'person';
+  }
+
+  function setMode(mode, btn) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.mode-options').forEach(el => el.classList.remove('visible'));
+    const opts = document.getElementById('opts-' + mode);
+    if (opts) opts.classList.add('visible');
+    document.getElementById('preprocess-extra').style.display = mode === 'preprocessed' ? 'none' : 'block';
+  }
+
+  async function scanFolder() {
+    const folder = document.getElementById('folderInput').value.trim();
+    if (!folder) return;
+    const limit = Number(document.getElementById('limitInput').value || 100);
+    const recursive = document.getElementById('recursiveInput').checked;
+    statusEl.textContent = 'Scanning...';
+    document.getElementById('runBtn').disabled = true;
+    try {
+      const data = await fetchJson(`/api/yolo-probe/scan?folder=${encodeURIComponent(folder)}&limit=${limit}&recursive=${recursive}`);
+      scannedImages = data.images;
+      runs = [];
+      activeRunIds = new Set();
+      filterPersons = false;
+      filterAnyDet = false;
+      showPreprocessed = false;
+      showCropRegions = false;
+      document.getElementById('filterPersonBtn').classList.remove('active');
+      document.getElementById('filterAnyDetBtn').classList.remove('active');
+      document.getElementById('showPreprocessedBtn').classList.remove('active');
+      document.getElementById('showCropsBtn').classList.remove('active');
+      Object.keys(_preprocessedCache).forEach(k => { URL.revokeObjectURL(_preprocessedCache[k]); delete _preprocessedCache[k]; });
+      renderGrid(scannedImages);
+      renderRunsList();
+      applyCardFilter();
+      document.getElementById('runBtn').disabled = scannedImages.length === 0;
+      document.getElementById('statsBar').style.display = 'flex';
+      document.getElementById('statImages').textContent = data.images.length;
+      document.getElementById('statRuns').textContent = '0';
+      document.getElementById('statActive').textContent = '0';
+      document.getElementById('statVisible').textContent = data.images.length;
+      statusEl.textContent = `Loaded ${data.images.length} of ${data.total} images from ${data.folder}`;
+    } catch (err) {
+      statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+    }
+  }
+
+  function renderGrid(images) {
+    const grid = document.getElementById('probeGrid');
+    grid.innerHTML = '';
+    // pinned first, then unpinned
+    const pinned = images.filter(i => pinnedImages.has(i.path));
+    const unpinned = images.filter(i => !pinnedImages.has(i.path));
+    const ordered = [...pinned, ...unpinned];
+
+    if (pinned.length > 0) {
+      ordered.splice(pinned.length, 0, null); // null = divider marker
+    }
+
+    ordered.forEach((img, pos) => {
+      if (img === null) {
+        // divider between pinned and unpinned
+        const div = document.createElement('div');
+        div.className = 'pin-divider';
+        div.innerHTML = '<hr/><span>📌 pinned above · rest below</span><hr/>';
+        grid.appendChild(div);
+        return;
+      }
+      const idx = images.indexOf(img);
+      const card = document.createElement('div');
+      card.className = 'probe-card' + (pinnedImages.has(img.path) ? ' pinned' : '');
+      card.id = `card-${idx}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'probe-img-wrap';
+      const imgEl = document.createElement('img');
+      imgEl.src = `/api/yolo-probe/image?path=${encodeURIComponent(img.path)}`;
+      imgEl.loading = 'lazy';
+      imgEl.alt = img.filename;
+      const canvas = document.createElement('canvas');
+      canvas.id = `canvas-${idx}`;
+      const pinBtn = document.createElement('button');
+      pinBtn.className = 'pin-btn';
+      pinBtn.title = pinnedImages.has(img.path) ? 'Unpin' : 'Pin to top';
+      pinBtn.textContent = '📌';
+      pinBtn.onclick = () => togglePin(img.path);
+      wrap.append(imgEl, canvas, pinBtn);
+      const footer = document.createElement('div');
+      footer.className = 'probe-card-footer';
+      footer.id = `footer-${idx}`;
+      footer.textContent = img.filename;
+      card.append(wrap, footer);
+      grid.appendChild(card);
+    });
+  }
+
+  function togglePin(path) {
+    if (pinnedImages.has(path)) pinnedImages.delete(path);
+    else pinnedImages.add(path);
+    renderGrid(scannedImages);
+    redrawAllCards();
+    applyCardFilter();
+    persistSession();
+  }
+
+  // ── preprocessed image toggle ───────────────────────────────────────────────────
+  function toggleShowPreprocessed() {
+    showPreprocessed = !showPreprocessed;
+    document.getElementById('showPreprocessedBtn').classList.toggle('active', showPreprocessed);
+    if (showPreprocessed) {
+      // use most recent active run that has preprocessing
+      const run = [...activeRunIds].map(id => runs.find(r => r.id === id)).filter(r => r?.preprocess)
+        .sort((a, b) => b.id - a.id)[0];
+      if (run) applyPreprocessedImages(run);
+      else restoreOriginalImages();
+    } else {
+      restoreOriginalImages();
+    }
+  }
+
+
+  async function toggleShowCrops() {
+    showCropRegions = !showCropRegions;
+    document.getElementById('showCropsBtn').classList.toggle('active', showCropRegions);
+    if (showCropRegions) {
+      await showCropGallery();
+    } else {
+      // renderGrid rebuilds cards including <canvas> elements; restoreOriginalImages alone
+      // doesn't because showCropGallery() removed the canvas from the DOM.
+      renderGrid(scannedImages);
+      redrawAllCards();
+      applyCardFilter();
+    }
+  }
+
+  async function showCropGallery() {
+    // Resolve model + crop params from the most recent active hand_crop run,
+    // or fall back to any active run's model, or the form's current values.
+    const activeRuns = [...activeRunIds].map(id => runs.find(r => r.id === id)).filter(Boolean);
+    const refRun = activeRuns.find(r => r.mode === 'hand_crop') || activeRuns[activeRuns.length - 1];
+    const mainModelPath = refRun?.model
+      || document.getElementById('modelPathInput').value.trim()
+      || document.getElementById('modelSelect').value
+      || '';
+    // Person model: prefer stored run value, then hand-crop person model selector, fall back to main
+    const personModelPath = refRun?.person_model_path
+      || document.getElementById('handPersonModelSelect').value
+      || mainModelPath;
+    // Hand model: prefer stored run value, then dedicated hand model selector (auto-set to hand_yolov8n), fall back to main
+    const handModelPath = refRun?.hand_model_path
+      || document.getElementById('handModelSelect').value
+      || mainModelPath;
+    const personConf = String(refRun?.person_pad_px != null ? 0.35 : Number(document.getElementById('handPersonConfInput').value));
+    const handConf   = String(refRun?.hand_pad_px   != null ? 0.25 : Number(document.getElementById('handConfInput').value));
+    const personPad  = String(refRun?.person_pad_px ?? Number(document.getElementById('handPersonPadInput').value));
+    const handPad    = String(refRun?.hand_pad_px   ?? Number(document.getElementById('handPadInput').value));
+    const handClassId = String(refRun?.hand_class_id ?? Number(document.getElementById('handClassIdInput').value));
+    // Preprocessing: use the run's settings so crops are produced from the same enhanced image
+    const pp = refRun?.preprocess || {};
+    const ppClahe        = String(pp.clahe        ?? false);
+    const ppGamma        = String(pp.gamma        ?? 1.0);
+    const ppSharpen      = String(pp.sharpen      ?? false);
+    const ppDenoise      = String(pp.denoise      ?? false);
+    const ppAutoBrighten = String(pp.auto_brighten ?? false);
+
+    // For each image, fetch crops and replace card content
+    for (const [idx, img] of scannedImages.entries()) {
+      const card = document.getElementById(`card-${idx}`);
+      if (!card) continue;
+      const wrap = card.querySelector('.probe-img-wrap');
+      if (!wrap) continue;
+      // Remove all children
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+      // Fetch crops from backend
+      let crops = [];
+      try {
+        const params = new URLSearchParams({
+          path: img.path,
+          detect_mode: 'hand_crop',
+          person_model_path: personModelPath,
+          hand_model_path: handModelPath,
+          person_confidence: personConf,
+          hand_confidence: handConf,
+          iou_threshold: '0.5',
+          person_pad_px: personPad,
+          hand_pad_px: handPad,
+          hand_class_id: handClassId,
+          preprocess_clahe: ppClahe,
+          preprocess_gamma: ppGamma,
+          preprocess_sharpen: ppSharpen,
+          preprocess_denoise: ppDenoise,
+          preprocess_auto_brighten: ppAutoBrighten,
+        });
+        const resp = await fetch(`/api/yolo-probe/crops?${params.toString()}`, { method: 'POST' });
+        if (resp.ok) {
+          const data = await resp.json();
+          crops = data.crops || [];
+        }
+      } catch (_) {}
+      if (!crops.length) {
+        // fallback: show original image
+        const imgEl = document.createElement('img');
+        imgEl.src = `/api/yolo-probe/image?path=${encodeURIComponent(img.path)}`;
+        imgEl.loading = 'lazy';
+        imgEl.alt = img.filename;
+        wrap.appendChild(imgEl);
+        continue;
+      }
+      // Show all crops as a grid
+      const grid = document.createElement('div');
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(80px, 1fr))';
+      grid.style.gap = '4px';
+      for (const crop of crops) {
+        const cropImg = document.createElement('img');
+        cropImg.src = `data:image/png;base64,${crop.img_b64}`;
+        cropImg.alt = crop.type + ' crop';
+        cropImg.style.width = '100%';
+        cropImg.style.background = crop.type === 'person' ? '#e0f2fe' : '#fee2e2';
+        cropImg.style.border = crop.type === 'person' ? '2px solid #2563eb' : '2px solid #e11d48';
+        cropImg.style.borderRadius = '6px';
+        grid.appendChild(cropImg);
+      }
+      wrap.appendChild(grid);
+    }
+  }
+
+  async function applyPreprocessedImages(run) {
+    const pp = run.preprocess || {};
+    const anyPP = pp.clahe || pp.auto_brighten || pp.sharpen || pp.denoise || Math.abs((pp.gamma||1.0) - 1.0) > 0.01;
+    if (!anyPP) { restoreOriginalImages(); return; }
+    for (const [imgPath, dets] of Object.entries(run.perImage)) {
+      const idx = scannedImages.findIndex(i => i.path === imgPath);
+      if (idx < 0) continue;
+      const imgEl = document.querySelector(`#card-${idx} img`);
+      if (!imgEl) continue;
+      if (!_preprocessedCache[imgPath]) {
+        try {
+          const resp = await fetch('/api/yolo-probe/preview-preprocessed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: imgPath,
+              preprocess_clahe: pp.clahe || false,
+              preprocess_gamma: pp.gamma || 1.0,
+              preprocess_sharpen: pp.sharpen || false,
+              preprocess_denoise: pp.denoise || false,
+              preprocess_auto_brighten: pp.auto_brighten || false,
+            }),
+          });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            _preprocessedCache[imgPath] = URL.createObjectURL(blob);
+          }
+        } catch (_) {}
+      }
+      if (_preprocessedCache[imgPath]) imgEl.src = _preprocessedCache[imgPath];
+    }
+  }
+
+  function restoreOriginalImages() {
+    scannedImages.forEach((img, idx) => {
+      const imgEl = document.querySelector(`#card-${idx} img`);
+      if (imgEl) imgEl.src = `/api/yolo-probe/image?path=${encodeURIComponent(img.path)}`;
+    });
+  }
+
+  // ── filters ───────────────────────────────────────────────────────────────
+  function toggleDetectionFilter() {
+    filterAnyDet = !filterAnyDet;
+    if (filterAnyDet) filterPersons = false;  // mutually exclusive
+    document.getElementById('filterAnyDetBtn').classList.toggle('active', filterAnyDet);
+    document.getElementById('filterPersonBtn').classList.toggle('active', filterPersons);
+    applyCardFilter();
+  }
+
+  function togglePersonFilter() {
+    filterPersons = !filterPersons;
+    if (filterPersons) filterAnyDet = false;  // mutually exclusive
+    document.getElementById('filterPersonBtn').classList.toggle('active', filterPersons);
+    document.getElementById('filterAnyDetBtn').classList.toggle('active', filterAnyDet);
+    applyCardFilter();
+  }
+
+  function imageHasAnyDet(imagePath) {
+    for (const runId of activeRunIds) {
+      const run = runs.find(r => r.id === runId);
+      if (!run) continue;
+      if ((run.perImage[imagePath] || []).length > 0) return true;
+    }
+    return false;
+  }
+
+  function imageHasPerson(imagePath) {
+    for (const runId of activeRunIds) {
+      const run = runs.find(r => r.id === runId);
+      if (!run) continue;
+      if ((run.perImage[imagePath] || []).some(isPerson)) return true;
+    }
+    return false;
+  }
+
+  function applyCardFilter() {
+    let visibleCount = 0;
+    const hasActiveRuns = activeRunIds.size > 0;
+    scannedImages.forEach((img, idx) => {
+      const card = document.getElementById(`card-${idx}`);
+      if (!card) return;
+      let hide = false;
+      if (hasActiveRuns) {
+        if (filterAnyDet) hide = !imageHasAnyDet(img.path);
+        else if (filterPersons) hide = !imageHasPerson(img.path);
+      }
+      card.classList.toggle('hidden', hide);
+      if (!hide) visibleCount++;
+    });
+    const statEl = document.getElementById('statVisible');
+    if (statEl) statEl.textContent = visibleCount;
+  }
+
+  function drawDetectionsOnCanvas(idx, detEntries) {
+    const imgEl = document.querySelector(`#card-${idx} img`);
+    const canvas = document.getElementById(`canvas-${idx}`);
+    if (!imgEl || !canvas) return;
+    function doDraw() {
+      canvas.width = imgEl.naturalWidth;
+      canvas.height = imgEl.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const { det, runColor } of detEntries) {
+        const [x1, y1, x2, y2] = det.bbox;
+        const color = detColor(det, runColor);
+        const lw = Math.max(1.5, canvas.width / 350);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lw;
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        const label = `${det.class_name} ${(det.score * 100).toFixed(0)}%`;
+        const fs = Math.max(9, canvas.width / 55);
+        ctx.font = `${fs}px sans-serif`;
+        const tw = ctx.measureText(label).width + 4;
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = color;
+        ctx.fillRect(x1, y1 - fs - 2, tw, fs + 2);
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, x1 + 2, y1 - 2);
+      }
+
+      // draw dashed crop region boxes if toggle is on
+      if (showCropRegions) {
+        const drawnPersonCrops = new Set();
+        const drawnHandCrops = new Set();
+        for (const { det, runColor } of detEntries) {
+          // find the run to get pad values
+          const runId = activeRunIds.size === 1 ? [...activeRunIds][0]
+            : runs.find(r => r.color === runColor)?.id;
+          const run = runs.find(r => r.id === runId);
+          const personPad = run?.person_pad_px ?? 30;
+          const handPad = run?.hand_pad_px ?? 20;
+          const W = canvas.width, H = canvas.height;
+
+          if (det.person_bbox) {
+            const key = det.person_bbox.join(',');
+            if (!drawnPersonCrops.has(key)) {
+              drawnPersonCrops.add(key);
+              const [px1,py1,px2,py2] = det.person_bbox;
+              const cx1 = Math.max(0, px1 - personPad), cy1 = Math.max(0, py1 - personPad);
+              const cx2 = Math.min(W, px2 + personPad), cy2 = Math.min(H, py2 + personPad);
+              ctx.save();
+              ctx.setLineDash([6, 4]);
+              ctx.strokeStyle = '#2563eb';
+              ctx.lineWidth = Math.max(1, lw * 0.8);
+              ctx.globalAlpha = 0.6;
+              ctx.strokeRect(cx1, cy1, cx2 - cx1, cy2 - cy1);
+              ctx.restore();
+            }
+          }
+          if (det.hand_bbox) {
+            const key = det.hand_bbox.join(',');
+            if (!drawnHandCrops.has(key)) {
+              drawnHandCrops.add(key);
+              const [hx1,hy1,hx2,hy2] = det.hand_bbox;
+              const cx1 = Math.max(0, hx1 - handPad), cy1 = Math.max(0, hy1 - handPad);
+              const cx2 = Math.min(W, hx2 + handPad), cy2 = Math.min(H, hy2 + handPad);
+              ctx.save();
+              ctx.setLineDash([4, 3]);
+              ctx.strokeStyle = '#e11d48';
+              ctx.lineWidth = Math.max(1, lw * 0.8);
+              ctx.globalAlpha = 0.6;
+              ctx.strokeRect(cx1, cy1, cx2 - cx1, cy2 - cy1);
+              ctx.restore();
+            }
+          }
+        }
+      }
+    }
+    if (imgEl.complete && imgEl.naturalWidth > 0) doDraw();
+    else imgEl.addEventListener('load', doDraw, { once: true });
+  }
+
+  function redrawAllCards() {
+    const multiRun = activeRunIds.size > 1;
+    scannedImages.forEach((img, idx) => {
+      const detEntries = [];
+      for (const runId of activeRunIds) {
+        const run = runs.find(r => r.id === runId);
+        if (!run) continue;
+        for (const det of (run.perImage[img.path] || [])) {
+          detEntries.push({ det, runColor: multiRun ? run.color : null });
+        }
+      }
+      drawDetectionsOnCanvas(idx, detEntries);
+
+      const footer = document.getElementById(`footer-${idx}`);
+      if (!footer) return;
+      if (detEntries.length > 0) {
+        const counts = [];
+        for (const runId of activeRunIds) {
+          const run = runs.find(r => r.id === runId);
+          if (!run) continue;
+          const n = (run.perImage[img.path] || []).length;
+          const sw = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${run.color};margin-right:2px"></span>`;
+          counts.push(`${sw}${n}`);
+        }
+        footer.innerHTML = `${escapeHtml(img.filename)} · ${counts.join(' / ')}`;
+      } else {
+        footer.textContent = img.filename;
+      }
+    });
+    document.getElementById('statActive').textContent = activeRunIds.size;
+    applyCardFilter();
+  }
+
+  async function runDetection() {
+    if (!scannedImages.length) return;
+    const runBtn = document.getElementById('runBtn');
+    runBtn.disabled = true;
+
+    const modelPath = document.getElementById('modelPathInput').value.trim()
+      || document.getElementById('modelSelect').value || '';
+
+    const ppClahe   = currentMode === 'preprocessed' ? document.getElementById('ppClahe').checked   : document.getElementById('ppClahe2').checked;
+    const ppGamma   = currentMode === 'preprocessed' ? Number(document.getElementById('ppGamma').value)  : Number(document.getElementById('ppGamma2').value);
+    const ppSharpen = currentMode === 'preprocessed' ? document.getElementById('ppSharpen').checked : document.getElementById('ppSharpen2').checked;
+    const ppDenoise = currentMode === 'preprocessed' ? document.getElementById('ppDenoise').checked : document.getElementById('ppDenoise2').checked;
+    const ppAutoBrighten = currentMode === 'preprocessed' ? document.getElementById('ppAutoBrighten').checked : document.getElementById('ppAutoBrighten2').checked;
+
+    const body = {
+      paths: scannedImages.map(i => i.path),
+      model_path: modelPath,
+      confidence: Number(document.getElementById('confInput').value),
+      iou_threshold: 0.5,
+      max_detections_per_image: Number(document.getElementById('maxDetInput').value),
+      class_preset: document.getElementById('classPresetInput').value,
+      segmentation: document.getElementById('segInput').checked,
+      detect_mode: currentMode,
+      person_model_path: currentMode === 'hand_crop'
+        ? (document.getElementById('handPersonModelSelect').value || '')
+        : (document.getElementById('personModelSelect').value || ''),
+      person_confidence: currentMode === 'hand_crop'
+        ? Number(document.getElementById('handPersonConfInput').value)
+        : Number(document.getElementById('personConfInput').value),
+      person_pad_px: currentMode === 'hand_crop'
+        ? Number(document.getElementById('handPersonPadInput').value)
+        : Number(document.getElementById('personPadInput').value),
+      hand_model_path: document.getElementById('handModelSelect').value || '',
+      hand_confidence: Number(document.getElementById('handConfInput').value),
+      hand_pad_px: Number(document.getElementById('handPadInput').value),
+      hand_class_id: Number(document.getElementById('handClassIdInput').value),
+      sahi_slice_size: Number(document.getElementById('sahiSliceInput').value),
+      sahi_overlap_ratio: Number(document.getElementById('sahiOverlapInput').value),
+      preprocess_clahe: ppClahe,
+      preprocess_gamma: ppGamma,
+      preprocess_sharpen: ppSharpen,
+      preprocess_denoise: ppDenoise,
+      preprocess_auto_brighten: ppAutoBrighten,
+    };
+
+    scannedImages.forEach((_, idx) => document.getElementById(`card-${idx}`)?.classList.add('running'));
+    statusEl.textContent = `Running ${currentMode} detection on ${scannedImages.length} images...`;
+
+    const BATCH = 20;
+    let totalDets = 0;
+    let usedModel = modelPath;
+    const perImage = {};
+
+    for (let start = 0; start < scannedImages.length; start += BATCH) {
+      const batchPaths = scannedImages.slice(start, start + BATCH).map(i => i.path);
+      try {
+        const data = await fetchJson('/api/yolo-probe/detect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...body, paths: batchPaths }),
+        });
+        usedModel = data.model_path || usedModel;
+        for (const result of data.results) {
+          const dets = result.detections || [];
+          perImage[result.path] = dets;
+          totalDets += dets.length;
+          const idx = scannedImages.findIndex(i => i.path === result.path);
+          if (idx >= 0) document.getElementById(`card-${idx}`)?.classList.remove('running');
+        }
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">Batch error: ${escapeHtml(String(err))}</span>`;
+        break;
+      }
+      statusEl.textContent = `Running… ${Math.min(start + BATCH, scannedImages.length)}/${scannedImages.length}`;
+    }
+    scannedImages.forEach((_, idx) => document.getElementById(`card-${idx}`)?.classList.remove('running'));
+
+    const modelName = usedModel.split('/').pop();
+    const pp = [];
+    if (ppClahe) pp.push('CLAHE');
+    if (ppSharpen) pp.push('sharpen');
+    if (ppDenoise) pp.push('denoise');
+    if (ppAutoBrighten) pp.push('auto-brighten');
+    if (Math.abs(ppGamma - 1.0) > 0.01) pp.push(`γ${ppGamma}`);
+    let label = `Run ${runs.length + 1}: ${currentMode} · ${modelName} · conf=${body.confidence}`;
+    if (pp.length) label += ` · ${pp.join('+')}`;
+
+    const color = RUN_COLORS[runs.length % RUN_COLORS.length];
+    const run = {
+      id: Date.now(),
+      label,
+      mode: currentMode,
+      model: usedModel,
+      modelName,
+      conf: body.confidence,
+      totalDets,
+      ts: new Date().toISOString(),
+      color,
+      perImage,
+      // store preprocess + crop params for visualization
+      preprocess: {
+        clahe: ppClahe, gamma: ppGamma, sharpen: ppSharpen,
+        denoise: ppDenoise, auto_brighten: ppAutoBrighten,
+      },
+      person_pad_px: body.person_pad_px,
+      hand_pad_px: body.hand_pad_px,
+      person_model_path: body.person_model_path || usedModel,
+      hand_model_path: body.hand_model_path || usedModel,
+      hand_class_id: body.hand_class_id,
+    };
+    runs.push(run);
+    activeRunIds = new Set([run.id]);
+
+    // if preprocessed toggle is on, swap images using this run's params
+    if (showPreprocessed) applyPreprocessedImages(run);
+    renderRunsList();
+    redrawAllCards();
+    persistSession();
+
+    document.getElementById('statRuns').textContent = runs.length;
+    statusEl.textContent = `Run saved: ${totalDets} detections · "${label}"`;
+    runBtn.disabled = false;
+  }
+
+  function renderRunsList() {
+    const section = document.getElementById('runsSection');
+    section.style.display = runs.length > 0 ? 'block' : 'none';
+    document.getElementById('runsHeadLabel').textContent = `Runs (${runs.length})`;
+    document.getElementById('statRuns').textContent = runs.length;
+
+    const tbody = document.getElementById('runsTbody');
+    tbody.innerHTML = '';
+    runs.forEach(run => {
+      const tr = document.createElement('tr');
+      if (activeRunIds.has(run.id)) tr.classList.add('active-run');
+      const fmt = new Date(run.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      tr.innerHTML = `
+        <td><input type="checkbox" class="form-check-input" data-id="${run.id}" ${activeRunIds.has(run.id) ? 'checked' : ''} onchange="toggleRun(${run.id}, this.checked)" /></td>
+        <td><span class="run-swatch" style="background:${run.color}"></span></td>
+        <td><span class="run-label" title="${escapeHtml(run.label)}">${escapeHtml(run.label)}</span></td>
+        <td style="text-align:right">${run.totalDets}</td>
+        <td style="color:#637182">${fmt}</td>
+        <td><button class="run-del" title="Delete run" onclick="deleteRun(${run.id})">×</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function toggleRun(id, checked) {
+    if (checked) activeRunIds.add(id);
+    else activeRunIds.delete(id);
+    document.getElementById('statActive').textContent = activeRunIds.size;
+    renderRunsList();
+    redrawAllCards();
+  }
+  function selectAllRuns() { runs.forEach(r => activeRunIds.add(r.id)); renderRunsList(); redrawAllCards(); }
+  function selectNoneRuns() { activeRunIds.clear(); renderRunsList(); redrawAllCards(); }
+  function clearAllRuns() {
+    if (!runs.length || !confirm('Delete all runs?')) return;
+    runs = []; activeRunIds.clear();
+    renderRunsList(); redrawAllCards(); persistSession();
+  }
+  function deleteRun(id) {
+    runs = runs.filter(r => r.id !== id);
+    activeRunIds.delete(id);
+    renderRunsList(); redrawAllCards(); persistSession();
+  }
+  function toggleRunsTable() {
+    runsTableOpen = !runsTableOpen;
+    document.getElementById('runsBody').style.display = runsTableOpen ? '' : 'none';
+    document.getElementById('runsToggleIcon').textContent = runsTableOpen ? '▼' : '▶';
+  }
+
+  // ── persist / restore ─────────────────────────────────────────────────────
+  function persistSession() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ scannedImages, runs, pinnedImages: [...pinnedImages] })); } catch (_) {}
+  }
+
+  function restoreSession() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const { scannedImages: imgs, runs: savedRuns, pinnedImages: savedPins } = JSON.parse(raw);
+      if (!imgs?.length || !savedRuns?.length) return;
+      scannedImages = imgs;
+      runs = savedRuns;
+      pinnedImages = new Set(savedPins || []);
+      activeRunIds = new Set(runs.map(r => r.id));
+      renderGrid(scannedImages);
+      renderRunsList();
+      redrawAllCards();
+      document.getElementById('statsBar').style.display = 'flex';
+      document.getElementById('statImages').textContent = scannedImages.length;
+      document.getElementById('runBtn').disabled = false;
+      statusEl.textContent = `Restored ${runs.length} run(s) from previous session (${scannedImages.length} images).`;
+    } catch (_) {}
+  }
+
+  // ── export / import ───────────────────────────────────────────────────────
+  function exportRuns() {
+    if (!runs.length) { alert('No runs to export.'); return; }
+    const blob = new Blob([JSON.stringify({ scannedImages, runs, pinnedImages: [...pinnedImages] }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `yolo_probe_${new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function importRuns(evt) {
+    const file = evt.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const { scannedImages: imgs, runs: importedRuns, pinnedImages: importedPins } = JSON.parse(e.target.result);
+        if (!imgs?.length || !importedRuns?.length) { alert('Invalid or empty file.'); return; }
+        scannedImages = imgs; runs = importedRuns;
+        pinnedImages = new Set(importedPins || []);
+        activeRunIds = new Set(runs.map(r => r.id));
+        filterPersons = false;
+        filterAnyDet = false;
+        showPreprocessed = false;
+        showCropRegions = false;
+        document.getElementById('filterPersonBtn').classList.remove('active');
+        document.getElementById('filterAnyDetBtn').classList.remove('active');
+        document.getElementById('showPreprocessedBtn').classList.remove('active');
+        document.getElementById('showCropsBtn').classList.remove('active');
+        renderGrid(scannedImages); renderRunsList(); redrawAllCards();
+        document.getElementById('statsBar').style.display = 'flex';
+        document.getElementById('statImages').textContent = scannedImages.length;
+        document.getElementById('runBtn').disabled = false;
+        persistSession();
+        statusEl.textContent = `Imported ${runs.length} run(s) with ${scannedImages.length} images.`;
+      } catch (_) { alert('Failed to parse file.'); }
+    };
+    reader.readAsText(file);
+    evt.target.value = '';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  async function fetchJson(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      throw new Error(`HTTP ${r.status}: ${body.slice(0, 300)}`);
+    }
+    return r.json();
+  }
+  const statusEl = document.getElementById('status');
+
+  async function loadModels() {
+    try {
+      const data = await fetchJson('/api/yolo-probe/models');
+      const sel = document.getElementById('modelSelect');
+      const extraSels = [
+        document.getElementById('personModelSelect'),
+        document.getElementById('handPersonModelSelect'),
+        document.getElementById('handModelSelect'),
+      ];
+      sel.innerHTML = '';
+      extraSels.forEach(s => s && (s.innerHTML = '<option value="">Same as main model</option>'));
+      if (!data.models.length) {
+        sel.innerHTML = '<option value="">No .onnx models found</option>';
+      } else {
+        for (const m of data.models) {
+          const opt = new Option(m.name, m.path);
+          if (m.path === data.default) opt.selected = true;
+          sel.appendChild(opt);
+          extraSels.forEach(s => s && s.appendChild(opt.cloneNode(true)));
+        }
+        // auto-select hand_yolov8n for the hand model dropdown
+        const handSel = document.getElementById('handModelSelect');
+        const handOpt = Array.from(handSel.options).find(o => o.text.includes('hand_yolov8n'));
+        if (handOpt) handOpt.selected = true;
+      }
+    } catch (_) {
+      document.getElementById('modelSelect').innerHTML = `<option value="">Error loading models</option>`;
+    }
+  }
+
+  window.setMode = setMode;
+  window.scanFolder = scanFolder;
+  window.runDetection = runDetection;
+  window.toggleRun = toggleRun;
+  window.selectAllRuns = selectAllRuns;
+  window.selectNoneRuns = selectNoneRuns;
+  window.clearAllRuns = clearAllRuns;
+  window.deleteRun = deleteRun;
+  window.toggleRunsTable = toggleRunsTable;
+  window.togglePersonFilter = togglePersonFilter;
+  window.toggleDetectionFilter = toggleDetectionFilter;
+  window.togglePin = togglePin;
+  window.toggleShowPreprocessed = toggleShowPreprocessed;
+  window.toggleShowCrops = toggleShowCrops;
+  window.exportRuns = exportRuns;
+  window.importRuns = importRuns;
+
+  loadModels();
+  document.getElementById('preprocess-extra').style.display = 'block';
+  restoreSession();
+  </script>
+</body>
+</html>

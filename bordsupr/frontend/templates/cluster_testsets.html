@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cluster Testset Builder</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f6f7fb; color: #1f2430; }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 380px 1fr; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 8px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .thumb-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .thumb { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; background: #eef2f7; border-radius: 6px; cursor: zoom-in; }
+    .gt-card { border: 1px solid #d8dee8; border-radius: 8px; padding: 8px; background: #fff; }
+    .gt-card.labeled { border-color: #0b6e4f; background: #f4fbf8; }
+    .identity-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .identity-badge { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #d8dee8; border-radius: 20px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+    .identity-badge:hover { border-color: #0b6e4f; background: #f4fbf8; }
+    .identity-badge img { width: 28px; height: 28px; object-fit: cover; border-radius: 50%; background: #eef2f7; }
+    .identity-badge.active { border-color: #0b6e4f; background: #e6f4ef; font-weight: 600; }
+    .pagination-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; }
+    .pagination-bar select { font-size: 12px; padding: 2px 6px; }
+    .gt-input { font-size: 12px; padding: 4px 6px; }
+    .lightbox { position: fixed; inset: 0; background: rgba(12, 18, 28, 0.82); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 24px; }
+    .lightbox.open { display: flex; }
+    .lightbox-inner { max-width: min(1100px, 96vw); max-height: 94vh; }
+    .lightbox img { max-width: 100%; max-height: 86vh; object-fit: contain; background: #111827; border-radius: 8px; }
+    .lightbox-caption { color: #fff; margin-top: 10px; font-size: 14px; }
+    .lightbox-close { position: fixed; top: 14px; right: 18px; color: #fff; background: transparent; border: 0; font-size: 32px; line-height: 1; }
+    .testset-row { border: 1px solid #d8dee8; border-radius: 8px; padding: 10px; margin-bottom: 10px; cursor: pointer; }
+    .testset-row:hover { border-color: #0b6e4f; background: #f4fbf8; }
+    @media (max-width: 980px) { .workspace { grid-template-columns: 1fr; } .thumb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 560px) { .thumb-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Build Testset</h5>
+        <div class="muted">Randomly sample images and save the selection for repeatable clustering runs.</div>
+      </div>
+      <div class="panel-body">
+        <label class="form-label" for="nameInput">Name</label>
+        <input id="nameInput" class="form-control" placeholder="spot-quality-check-01" />
+
+        <label class="form-label mt-3" for="rootInput">Dataset root</label>
+        <input id="rootInput" class="form-control" value="{{ video_publisher_default_frame_dir }}" />
+
+        <label class="form-label mt-3" for="splitInput">Split/subfolder</label>
+        <input id="splitInput" class="form-control" placeholder="query or bounding_box_test" />
+
+        <label class="form-label mt-3" for="countInput">Number of images</label>
+        <input id="countInput" class="form-control" type="number" min="1" value="50" />
+
+        <label class="form-label mt-3" for="seedInput">Seed</label>
+        <input id="seedInput" class="form-control" type="number" placeholder="empty = random" />
+
+        <div class="form-check mt-3">
+          <input id="recursiveInput" class="form-check-input" type="checkbox" checked />
+          <label class="form-check-label" for="recursiveInput">Search recursively</label>
+        </div>
+
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-success" onclick="buildTestset()">Build and Save</button>
+          <button class="btn btn-outline-secondary" onclick="loadTestsets()">Refresh Saved Testsets</button>
+          <a class="btn btn-outline-primary" href="/cluster-experiments">Open Cluster Experiments</a>
+        </div>
+        <hr>
+        <div class="fw-semibold mb-2">YOLO Detection</div>
+        <label class="form-label" for="confInput">Confidence</label>
+        <input id="confInput" class="form-control" type="number" min="0" max="1" step="0.01" value="0.02" />
+        <label class="form-label mt-2" for="maxDetInput">Max detections per image</label>
+        <input id="maxDetInput" class="form-control" type="number" min="1" max="200" value="20" />
+        <label class="form-label mt-2" for="yoloClassPresetInput">YOLO classes</label>
+        <select id="yoloClassPresetInput" class="form-select">
+          <option value="objects" selected>Objects only (exclude persons)</option>
+          <option value="persons">Persons only</option>
+          <option value="all">All classes</option>
+        </select>
+        <div class="form-check mt-2">
+          <input id="segmentationInput" class="form-check-input" type="checkbox" />
+          <label class="form-check-label" for="segmentationInput">Use segmentation masks (YOLOv8-seg)</label>
+        </div>
+        <div class="d-grid mt-3">
+          <button id="detectBtn" class="btn btn-outline-success" onclick="runYoloDetection()" disabled>Run YOLO Detection</button>
+        </div>
+        <div id="status" class="muted mt-3">Loading defaults...</div>
+        <hr>
+        <div class="fw-semibold mb-2">Image Upscaling</div>
+        <div class="d-flex gap-2">
+          <select id="upscaleScaleInput" class="form-select form-select-sm w-auto">
+            <option value="2" selected>2x</option>
+            <option value="4">4x</option>
+            <option value="8">8x</option>
+          </select>
+          <select id="upscaleMethodInput" class="form-select form-select-sm flex-grow-1">
+            <option value="lanczos" selected>Lanczos</option>
+            <option value="bicubic">Bicubic</option>
+            <option value="bilinear">Bilinear</option>
+          </select>
+          <button id="upscaleBtn" class="btn btn-sm btn-outline-warning" onclick="runUpscale()" disabled>Upscale</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Saved Testsets</h5>
+        <div class="muted">Select a saved testset to preview the sampled images.</div>
+      </div>
+      <div class="panel-body">
+        <div id="testsets"></div>
+        <hr>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <div id="previewMeta" class="muted flex-grow-1">No testset selected.</div>
+          <div class="form-check form-check-inline">
+            <input id="labeledOnlyInput" class="form-check-input" type="checkbox" onchange="toggleLabeledOnly()" />
+            <label class="form-check-label" for="labeledOnlyInput" style="font-size:12px;">Labeled only</label>
+          </div>
+          <button id="saveGtBtn" class="btn btn-sm btn-success" onclick="saveGroundTruth()" disabled>Save Ground Truth</button>
+          <button id="clearGtBtn" class="btn btn-sm btn-outline-danger" onclick="clearGroundTruth()" disabled>Clear Labels</button>
+        </div>
+        <div id="identityBar" class="identity-bar" style="display:none;"></div>
+        <div id="paginationBar" class="pagination-bar" style="display:none;">
+          <button id="pagePrev" class="btn btn-sm btn-outline-secondary" onclick="changePage(-1)">Prev</button>
+          <span id="pageInfo" class="muted"></span>
+          <button id="pageNext" class="btn btn-sm btn-outline-secondary" onclick="changePage(1)">Next</button>
+          <button id="pageLast" class="btn btn-sm btn-outline-secondary" onclick="jumpToLastPage()">Last</button>
+          <select id="pageSize" class="form-select form-select-sm" style="width:auto;" onchange="changePageSize()">
+            <option value="20">20</option>
+            <option value="40" selected>40</option>
+            <option value="80">80</option>
+            <option value="200">200</option>
+          </select>
+          <button id="clearIdentityBtn" class="btn btn-sm btn-outline-success" onclick="clearIdentityFilter()" style="display:none;">Show all identities</button>
+        </div>
+        <div id="preview" class="thumb-grid"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="lightbox" class="lightbox" onclick="closeLightbox(event)">
+    <button class="lightbox-close" type="button" onclick="closeLightbox(event)">&times;</button>
+    <div class="lightbox-inner">
+      <img id="lightboxImg" alt="" />
+      <div id="lightboxCaption" class="lightbox-caption"></div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const testsetsEl = document.getElementById('testsets');
+    const previewEl = document.getElementById('preview');
+    const previewMetaEl = document.getElementById('previewMeta');
+    let currentTestsetId = null;
+    let currentPreview = null;
+    let previewOffset = 0;
+    let previewLimit = 40;
+    let activeIdentity = null;
+
+    function escapeHtml(value) {
+      return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+    }
+
+    function openLightbox(src, caption) {
+      document.getElementById('lightboxImg').src = src;
+      document.getElementById('lightboxCaption').textContent = caption || '';
+      document.getElementById('lightbox').classList.add('open');
+    }
+
+    function closeLightbox(event) {
+      if (event && event.target && event.target.id !== 'lightbox' && !event.target.classList.contains('lightbox-close')) return;
+      document.getElementById('lightbox').classList.remove('open');
+      document.getElementById('lightboxImg').src = '';
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.message || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function loadDefaults() {
+      const defaults = await fetchJson('/api/cluster-testsets/defaults');
+      document.getElementById('rootInput').value = defaults.dataset_root;
+      statusEl.textContent = `Saving testsets in ${defaults.store_dir}`;
+    }
+
+    async function buildTestset() {
+      statusEl.textContent = 'Building testset...';
+      try {
+        const seedValue = document.getElementById('seedInput').value;
+        const payload = {
+          name: document.getElementById('nameInput').value.trim() || null,
+          dataset_root: document.getElementById('rootInput').value.trim(),
+          split: document.getElementById('splitInput').value.trim() || null,
+          image_count: Number(document.getElementById('countInput').value || 50),
+          seed: seedValue ? Number(seedValue) : null,
+          recursive: document.getElementById('recursiveInput').checked,
+        };
+        const saved = await fetchJson('/api/cluster-testsets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        statusEl.textContent = `Saved ${saved.name} (${saved.image_count} images, seed ${saved.seed})`;
+        await loadTestsets();
+        previewOffset = 0;
+        activeIdentity = null;
+        await previewTestset(saved.id);
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function loadTestsets() {
+      const payload = await fetchJson('/api/cluster-testsets');
+      testsetsEl.innerHTML = payload.testsets.map(testset => `
+        <div class="testset-row" onclick="previewOffset=0; activeIdentity=null; previewTestset('${escapeHtml(testset.id)}')">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="fw-semibold">${escapeHtml(testset.name || testset.id)}</div>
+            <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteTestset('${escapeHtml(testset.id)}')">Delete</button>
+          </div>
+          <div class="muted">${escapeHtml(testset.id)} · ${testset.image_count} images · seed ${escapeHtml(testset.seed)}</div>
+          <div class="muted">detections ${escapeHtml(testset.detection_count ?? 0)} · ground truth ${escapeHtml(testset.ground_truth?.labeled_count ?? 0)}/${escapeHtml(testset.ground_truth?.image_count ?? testset.image_count)} · identities ${escapeHtml(testset.ground_truth?.identity_count ?? 0)}</div>
+          <div class="muted">${escapeHtml(testset.dataset_root || '')}</div>
+        </div>
+      `).join('') || '<div class="muted">No saved testsets yet.</div>';
+    }
+
+    async function previewTestset(id, labeledOnly) {
+      const labeledOnlyChecked = (labeledOnly !== undefined ? labeledOnly : document.getElementById('labeledOnlyInput').checked);
+      const labeledOnlyParam = labeledOnlyChecked ? '&labeled_only=true' : '';
+      const identityParam = activeIdentity ? `&identity=${encodeURIComponent(activeIdentity)}` : '';
+      const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(id)}/preview?offset=${previewOffset}&limit=${previewLimit}${labeledOnlyParam}${identityParam}`);
+      currentTestsetId = id;
+      currentPreview = payload;
+      document.getElementById('saveGtBtn').disabled = false;
+      document.getElementById('clearGtBtn').disabled = false;
+      document.getElementById('detectBtn').disabled = false;
+      document.getElementById('upscaleBtn').disabled = false;
+      previewMetaEl.textContent = `${payload.name || payload.id}: ${payload.image_count} images · labeled ${payload.ground_truth?.labeled_count ?? 0}/${payload.ground_truth?.image_count ?? payload.image_count} · identities ${payload.ground_truth?.identity_count ?? 0}`;
+      const identityBar = document.getElementById('identityBar');
+      const groups = payload.identity_groups || {};
+      const counts = payload.identity_counts || {};
+      const groupKeys = Object.keys(groups);
+      if (groupKeys.length > 0) {
+        identityBar.style.display = 'flex';
+        identityBar.innerHTML = groupKeys.map(key => {
+          const samples = groups[key];
+          const count = counts[key] || samples.length;
+          const thumb = samples[0]?.crop_url || samples[0]?.image_url || '';
+          const isActive = activeIdentity === key;
+          return `<div class="identity-badge ${isActive ? 'active' : ''}" title="${escapeHtml(key)} · ${count} sample(s)" onclick="filterByIdentity('${escapeHtml(key)}')">
+            <img src="${escapeHtml(thumb)}" alt="" onerror="this.style.display='none'" />
+            <span>${escapeHtml(key)} <span class="muted">(${count})</span></span>
+          </div>`;
+        }).join('');
+      } else {
+        identityBar.style.display = 'none';
+        identityBar.innerHTML = '';
+      }
+      const paginationBar = document.getElementById('paginationBar');
+      const pag = payload.pagination;
+      if (pag && pag.total > 0) {
+        paginationBar.style.display = 'flex';
+        const start = pag.offset + 1;
+        const end = Math.min(pag.offset + pag.limit, pag.total);
+        document.getElementById('pageInfo').textContent = `${start}-${end} of ${pag.total}`;
+        document.getElementById('pagePrev').disabled = !pag.has_prev;
+        document.getElementById('pageNext').disabled = !pag.has_next;
+        document.getElementById('pageLast').disabled = !pag.has_next;
+        document.getElementById('clearIdentityBtn').style.display = activeIdentity ? 'inline-block' : 'none';
+      } else {
+        paginationBar.style.display = 'none';
+      }
+      previewEl.innerHTML = payload.images.map(image => {
+        const detections = image.detections;
+        if (detections && detections.length) {
+          return detections.map(det => `
+            <div class="gt-card ${det.label?.identity !== null && det.label?.identity !== undefined && det.label?.identity !== '' ? 'labeled' : ''}">
+              <img class="thumb" src="${det.crop_url}" alt="${escapeHtml(det.class_name)}" onclick="openLightbox('${image.image_url}', '${escapeHtml(`Full image · ${det.class_name} · ${image.filename}`)}')" />
+              <div class="muted text-truncate">${escapeHtml(det.class_name)} ${(Number(det.score || 0)).toFixed(2)}</div>
+              <div class="muted text-truncate">${escapeHtml(image.filename)}</div>
+              <label class="muted mt-1" for="gt-det-${escapeHtml(det.id)}">Identity</label>
+              <input id="gt-det-${escapeHtml(det.id)}" class="form-control gt-input gt-identity" data-detection-id="${escapeHtml(det.id)}" data-index="${image.index}" value="${escapeHtml(det.label?.identity ?? '')}" placeholder="same object/person = same id" />
+            </div>
+          `).join('');
+        }
+        if (detections !== null && detections.length === 0) {
+          return `
+          <div class="gt-card">
+            <img class="thumb" src="${image.image_url}" alt="${escapeHtml(image.filename)}" onclick="openLightbox('${image.image_url}', '${escapeHtml(image.filename)}')" style="opacity:0.45;" />
+            <div class="muted text-truncate">${escapeHtml(image.filename)}</div>
+            <div class="muted mt-1" style="font-size:11px;">No detections</div>
+          </div>
+          `;
+        }
+        return `
+        <div class="gt-card ${image.label?.identity !== null && image.label?.identity !== undefined && image.label?.identity !== '' ? 'labeled' : ''}">
+          <img class="thumb" src="${image.image_url}" alt="${escapeHtml(image.filename)}" onclick="openLightbox('${image.image_url}', '${escapeHtml(image.filename)}')" />
+          <div class="muted text-truncate">${escapeHtml(image.filename)}</div>
+          <label class="muted mt-1" for="gt-${image.index}">Identity</label>
+          <input id="gt-${image.index}" class="form-control gt-input gt-identity" data-index="${image.index}" value="${escapeHtml(image.label?.identity ?? '')}" placeholder="same person = same id" />
+        </div>
+        `;
+      }).join('');
+    }
+
+    async function toggleLabeledOnly() {
+      if (!currentTestsetId) return;
+      previewOffset = 0;
+      await previewTestset(currentTestsetId);
+    }
+
+    async function filterByIdentity(identity) {
+      if (!currentTestsetId) return;
+      activeIdentity = identity;
+      previewOffset = 0;
+      await previewTestset(currentTestsetId);
+    }
+
+    async function clearIdentityFilter() {
+      if (!currentTestsetId) return;
+      activeIdentity = null;
+      previewOffset = 0;
+      await previewTestset(currentTestsetId);
+    }
+
+    async function changePage(delta) {
+      if (!currentTestsetId) return;
+      previewOffset = Math.max(0, previewOffset + delta * previewLimit);
+      await previewTestset(currentTestsetId);
+    }
+
+    async function jumpToLastPage() {
+      if (!currentTestsetId || !currentPreview?.pagination) return;
+      const pag = currentPreview.pagination;
+      previewOffset = Math.max(0, Math.floor((pag.total - 1) / previewLimit) * previewLimit);
+      await previewTestset(currentTestsetId);
+    }
+
+    async function changePageSize() {
+      if (!currentTestsetId) return;
+      previewLimit = Number(document.getElementById('pageSize').value);
+      previewOffset = 0;
+      await previewTestset(currentTestsetId);
+    }
+
+    async function saveGroundTruth() {
+      if (!currentTestsetId) return;
+      statusEl.textContent = 'Saving ground truth...';
+      const labels = [...document.querySelectorAll('.gt-identity')].map(input => ({
+        index: Number(input.dataset.index),
+        detection_id: input.dataset.detectionId || null,
+        identity: input.value.trim() || null,
+      }));
+      try {
+        const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(currentTestsetId)}/ground-truth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ labels }),
+        });
+        statusEl.textContent = `Saved ground truth: ${payload.ground_truth.labeled_count}/${payload.ground_truth.image_count} labeled, ${payload.ground_truth.identity_count} identities`;
+        await loadTestsets();
+        await previewTestset(currentTestsetId);
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function runYoloDetection() {
+      if (!currentTestsetId) return;
+      statusEl.textContent = 'Running YOLO detection...';
+      try {
+        const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(currentTestsetId)}/detect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            confidence: Number(document.getElementById('confInput').value || 0.25),
+            max_detections_per_image: Number(document.getElementById('maxDetInput').value || 20),
+            class_preset: document.getElementById('yoloClassPresetInput').value,
+            classes: null,
+            segmentation: document.getElementById('segmentationInput').checked,
+          }),
+        });
+        statusEl.textContent = `YOLO finished: ${payload.detection_count} detections across ${payload.processed_images} images`;
+        await loadTestsets();
+        previewOffset = 0;
+        activeIdentity = null;
+        await previewTestset(currentTestsetId);
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function clearGroundTruth() {
+      if (!currentTestsetId) return;
+      if (!confirm('Clear all ground-truth labels for this testset?')) return;
+      statusEl.textContent = 'Clearing ground truth...';
+      try {
+        const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(currentTestsetId)}/ground-truth`, {
+          method: 'DELETE',
+        });
+        statusEl.textContent = `Cleared ${payload.cleared} labels.`;
+        await loadTestsets();
+        previewOffset = 0;
+        activeIdentity = null;
+        await previewTestset(currentTestsetId);
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    loadDefaults().catch(err => statusEl.textContent = String(err));
+    loadTestsets().catch(err => testsetsEl.textContent = String(err));
+    async function deleteTestset(id) {
+      if (!confirm('Delete this testset permanently?')) return;
+      statusEl.textContent = 'Deleting testset...';
+      try {
+        await fetchJson(`/api/cluster-testsets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        statusEl.textContent = 'Testset deleted.';
+        if (currentTestsetId === id) {
+          currentTestsetId = null;
+          currentPreview = null;
+          previewEl.innerHTML = '';
+          previewMetaEl.textContent = 'No testset selected.';
+          document.getElementById('identityBar').style.display = 'none';
+          document.getElementById('paginationBar').style.display = 'none';
+          document.getElementById('saveGtBtn').disabled = true;
+          document.getElementById('clearGtBtn').disabled = true;
+          document.getElementById('detectBtn').disabled = true;
+          document.getElementById('upscaleBtn').disabled = true;
+        }
+        await loadTestsets();
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function runUpscale() {
+      if (!currentTestsetId) return;
+      const scale = Number(document.getElementById('upscaleScaleInput').value);
+      const method = document.getElementById('upscaleMethodInput').value;
+      if (!confirm(`Upscale all images ${scale}x (${method})? This will replace the testset image paths with upscaled copies.`)) return;
+      statusEl.textContent = `Upscaling images ${scale}x...`;
+      document.getElementById('upscaleBtn').disabled = true;
+      try {
+        const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(currentTestsetId)}/upscale`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scale, method }),
+        });
+        const failMsg = payload.failed?.length ? ` (${payload.failed.length} failed)` : '';
+        statusEl.textContent = `Upscaled ${payload.processed} images at ${payload.scale}x${failMsg}`;
+        previewOffset = 0;
+        await previewTestset(currentTestsetId);
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      } finally {
+        document.getElementById('upscaleBtn').disabled = false;
+      }
+    }
+
+    window.buildTestset = buildTestset;
+    window.loadTestsets = loadTestsets;
+    window.previewTestset = previewTestset;
+    window.saveGroundTruth = saveGroundTruth;
+    window.clearGroundTruth = clearGroundTruth;
+    window.runYoloDetection = runYoloDetection;
+    window.runUpscale = runUpscale;
+    window.jumpToLastPage = jumpToLastPage;
+    window.deleteTestset = deleteTestset;
+    window.openLightbox = openLightbox;
+    window.closeLightbox = closeLightbox;
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeLightbox({ target: document.getElementById('lightbox') });
+    });
+  </script>
+</body>
+</html>

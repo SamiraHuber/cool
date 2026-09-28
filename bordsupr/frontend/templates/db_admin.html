@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Database Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; }
+    .workspace { padding: 16px; display: grid; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 14px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .table-wrap { overflow-x: auto; }
+    code { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Database Specs</h5>
+        <div class="muted">Schema, row counts, and index definitions for the live PostgreSQL database.</div>
+      </div>
+      <div class="panel-body">
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <button class="btn btn-outline-primary" onclick="loadSpecs()">Refresh Specs</button>
+          <button class="btn btn-outline-warning" onclick="reclusterDb()">Recluster All Objects</button>
+          <button class="btn btn-outline-info" onclick="recomputeDb()">Recompute Embeddings</button>
+          <button class="btn btn-outline-danger" onclick="resetDb()">Empty Database</button>
+        </div>
+        <div id="metaBlock" class="muted mb-3">Loading...</div>
+        <div id="tablesBlock"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    }
+
+    async function loadSpecs() {
+      const metaBlock = document.getElementById('metaBlock');
+      metaBlock.textContent = 'Loading database specs...';
+      try {
+        const data = await fetchJson('/api/db/specs');
+        metaBlock.innerHTML = `
+          <div><strong>Generated:</strong> ${escapeHtml(data.generated_at || '-')}</div>
+          <div><strong>PostgreSQL:</strong> ${escapeHtml(data.postgres_version || '-')}</div>
+          <div><strong>pgvector:</strong> ${escapeHtml(data.vector_extension_version || 'not installed')}</div>
+          <div><strong>Database URL:</strong> <code>${escapeHtml(data.database_url || '-')}</code></div>
+        `;
+
+        const tables = Array.isArray(data.tables) ? data.tables : [];
+        document.getElementById('tablesBlock').innerHTML = tables.map(table => `
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                <div>
+                  <h6 class="mb-1">${escapeHtml(table.name)}</h6>
+                  <div class="muted">Rows: ${Number(table.row_count || 0)}</div>
+                </div>
+              </div>
+              <div class="table-wrap mt-3">
+                <table class="table table-sm table-striped align-middle">
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Type</th>
+                      <th>Nullable</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${(Array.isArray(table.columns) ? table.columns : []).map(column => `
+                      <tr>
+                        <td>${escapeHtml(column.name)}</td>
+                        <td>${escapeHtml(column.type)}</td>
+                        <td>${column.nullable ? 'yes' : 'no'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-3">
+                <div class="muted mb-1">Indexes</div>
+                ${(Array.isArray(table.indexes) && table.indexes.length)
+                  ? table.indexes.map(index => `<div class="mb-2"><strong>${escapeHtml(index.name)}</strong><br><code>${escapeHtml(index.definition)}</code></div>`).join('')
+                  : '<div class="muted">No indexes listed.</div>'}
+              </div>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        metaBlock.innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    let _reclusterPollTimerDb = null;
+    let _recomputePollTimerDb = null;
+
+    async function _pollJobDb(endpointBase, jobId, btn, metaBlock, doneFormatter) {
+      return setInterval(async () => {
+        try {
+          const pollRes = await fetch(`${endpointBase}/${jobId}`);
+          if (!pollRes.ok) return;
+          const job = await pollRes.json();
+          if (job.status === 'running') {
+            const done = job.observations_done || job.classes_done || 0;
+            const total = job.total_observations || job.total_classes || 0;
+            metaBlock.textContent = `Processing… ${done}${total ? ' / ' + total : ''}`;
+          } else if (job.status === 'done') {
+            clearInterval(_reclusterPollTimerDb);
+            clearInterval(_recomputePollTimerDb);
+            _reclusterPollTimerDb = null;
+            _recomputePollTimerDb = null;
+            if (btn) btn.disabled = false;
+            metaBlock.innerHTML = doneFormatter(job);
+            await loadSpecs();
+          } else if (job.status === 'error') {
+            clearInterval(_reclusterPollTimerDb);
+            clearInterval(_recomputePollTimerDb);
+            _reclusterPollTimerDb = null;
+            _recomputePollTimerDb = null;
+            if (btn) btn.disabled = false;
+            metaBlock.innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(job.error || 'Unknown error')}</span>`;
+          }
+        } catch (e) {}
+      }, 2000);
+    }
+
+    async function reclusterDb() {
+      if (!window.confirm('This will re-cluster ALL observations from scratch using threshold 0.643. It can both merge and split clusters. Continue?')) {
+        return;
+      }
+      const metaBlock = document.getElementById('metaBlock');
+      const btn = document.querySelector('button[onclick="reclusterDb()"]');
+      if (btn) btn.disabled = true;
+      if (_reclusterPollTimerDb) { clearInterval(_reclusterPollTimerDb); _reclusterPollTimerDb = null; }
+      metaBlock.textContent = 'Starting recluster...';
+      try {
+        const startRes = await fetch('/api/objects/recluster?similarity_threshold=0.643', { method: 'POST' });
+        if (!startRes.ok) { throw new Error(await startRes.text() || `Recluster failed with ${startRes.status}`); }
+        const startData = await startRes.json();
+        _reclusterPollTimerDb = await _pollJobDb('/api/objects/recluster/jobs', startData.job_id, btn, metaBlock, (job) => {
+          const r = job.result || {};
+          return `<span class="text-success fw-semibold">Recluster complete: created ${r.objects_created || 0} objects, deleted ${r.objects_deleted || 0}, reassigned ${r.observations_reassigned || 0} observations across ${r.classes_processed || 0} classes.</span>`;
+        });
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        metaBlock.innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function recomputeDb() {
+      if (!window.confirm('This will recompute embeddings for ALL observations using OSNet finetuned (persons) and ConvNeXt-Tiny (objects). Continue?')) {
+        return;
+      }
+      const metaBlock = document.getElementById('metaBlock');
+      const btn = document.querySelector('button[onclick="recomputeDb()"]');
+      if (btn) btn.disabled = true;
+      if (_recomputePollTimerDb) { clearInterval(_recomputePollTimerDb); _recomputePollTimerDb = null; }
+      metaBlock.textContent = 'Starting embedding recomputation...';
+      try {
+        const startRes = await fetch('/api/objects/recompute-embeddings', { method: 'POST' });
+        if (!startRes.ok) { throw new Error(await startRes.text() || `Recompute failed with ${startRes.status}`); }
+        const startData = await startRes.json();
+        _recomputePollTimerDb = await _pollJobDb('/api/objects/recompute-embeddings/jobs', startData.job_id, btn, metaBlock, (job) => {
+          const r = job.result || {};
+          return `<span class="text-success fw-semibold">Embeddings recomputed: updated ${r.observations_updated || 0}, skipped ${r.observations_skipped || 0}, errors ${r.observations_errored || 0}</span>`;
+        });
+      } catch (err) {
+        if (btn) btn.disabled = false;
+        metaBlock.innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function resetDb() {
+      if (!window.confirm('This will empty the database. Continue?')) {
+        return;
+      }
+      const metaBlock = document.getElementById('metaBlock');
+      metaBlock.textContent = 'Emptying database...';
+      try {
+        const data = await fetchJson('/api/db/reset', { method: 'POST' });
+        metaBlock.innerHTML = `<span class="text-success fw-semibold">${escapeHtml(data.message || 'Database emptied.')}</span>`;
+        await loadSpecs();
+      } catch (err) {
+        metaBlock.innerHTML = `<span class="text-danger fw-semibold">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    loadSpecs();
+    window.loadSpecs = loadSpecs;
+    window.reclusterDb = reclusterDb;
+    window.recomputeDb = recomputeDb;
+    window.resetDb = resetDb;
+  </script>
+</body>
+</html>

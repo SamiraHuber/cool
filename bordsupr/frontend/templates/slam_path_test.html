@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>SLAM Path Draw Test</title>
+  <style>
+    body { background: #0f172a; color: #f1f5f9; font-family: sans-serif; padding: 20px; }
+    canvas { border: 1px solid #38bdf8; background: #1e293b; display: block; margin: 10px 0; }
+    button { padding: 8px 16px; margin-right: 8px; cursor: pointer; }
+    .log { background: #1e293b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h2>Path Drawing Test</h2>
+  <p>This tests the exact drawing logic used in slam.html. If you see a green dashed line with dots, the drawing code works.</p>
+  <button onclick="drawScene()">Draw Scene</button>
+  <button onclick="clearCanvas()">Clear</button>
+  <canvas id="testCanvas" width="800" height="600"></canvas>
+  <div id="log" class="log"></div>
+
+  <script>
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.innerHTML += msg + '<br>';
+      el.scrollTop = el.scrollHeight;
+      console.log(msg);
+    }
+
+    function clearCanvas() {
+      const canvas = document.getElementById('testCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      log('Canvas cleared');
+    }
+
+    function drawScene() {
+      clearCanvas();
+      const canvas = document.getElementById('testCanvas');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+
+      // Simulate map bounds
+      const minX = -10, maxX = 10, minY = -10, maxY = 10;
+      const scaleX = x => ((x - minX) / (maxX - minX)) * width;
+      const scaleY = y => height - ((y - minY) / (maxY - minY)) * height;
+
+      // Draw a simple grid
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+      ctx.lineWidth = 1;
+      for (let x = minX; x <= maxX; x += 5) {
+        const sx = scaleX(x);
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, height);
+        ctx.stroke();
+      }
+      for (let y = minY; y <= maxY; y += 5) {
+        const sy = scaleY(y);
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(width, sy);
+        ctx.stroke();
+      }
+
+      // Simulate robot at (0, 0)
+      const rx = scaleX(0);
+      const ry = scaleY(0);
+      ctx.beginPath();
+      ctx.arc(rx, ry, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      log('Robot drawn at (' + rx.toFixed(1) + ', ' + ry.toFixed(1) + ')');
+
+      // Simulate a planned path from robot (0,0) to goal (5, 3)
+      const plannedPath = {
+        path: [
+          {x: 0, y: 0},
+          {x: 0.8, y: 0.3},
+          {x: 1.5, y: 0.7},
+          {x: 2.2, y: 1.1},
+          {x: 2.9, y: 1.5},
+          {x: 3.6, y: 1.9},
+          {x: 4.3, y: 2.3},
+          {x: 5.0, y: 3.0},
+        ],
+        path_length_m: 5.83,
+        num_waypoints: 8
+      };
+
+      log('plannedPath.path.length = ' + plannedPath.path.length);
+      log('Condition: plannedPath && plannedPath.path && plannedPath.path.length > 1 = ' +
+          !!(plannedPath && plannedPath.path && plannedPath.path.length > 1));
+
+      if (plannedPath && plannedPath.path && plannedPath.path.length > 1) {
+        const path = plannedPath.path;
+        log('Drawing path with ' + path.length + ' points');
+
+        // Shadow
+        ctx.beginPath();
+        ctx.moveTo(scaleX(path[0].x), scaleY(path[0].y));
+        for (let i = 1; i < path.length; i++) {
+          ctx.lineTo(scaleX(path[i].x), scaleY(path[i].y));
+        }
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
+        ctx.lineWidth = 10;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        // Main line
+        ctx.beginPath();
+        ctx.moveTo(scaleX(path[0].x), scaleY(path[0].y));
+        for (let i = 1; i < path.length; i++) {
+          ctx.lineTo(scaleX(path[i].x), scaleY(path[i].y));
+        }
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Dots
+        for (let i = 0; i < path.length; i++) {
+          ctx.beginPath();
+          ctx.arc(scaleX(path[i].x), scaleY(path[i].y), 3, 0, 2 * Math.PI);
+          ctx.fillStyle = '#22c55e';
+          ctx.fill();
+        }
+
+        // Start/end markers
+        ctx.beginPath();
+        ctx.arc(scaleX(path[0].x), scaleY(path[0].y), 6, 0, 2 * Math.PI);
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(scaleX(path[path.length-1].x), scaleY(path[path.length-1].y), 8, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        log('Path drawn successfully');
+      } else {
+        log('ERROR: path condition failed');
+      }
+
+      // Draw goal marker
+      const gx = scaleX(5);
+      const gy = scaleY(3);
+      ctx.beginPath();
+      ctx.arc(gx, gy, 10, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      log('Goal marker drawn at (' + gx.toFixed(1) + ', ' + gy.toFixed(1) + ')');
+    }
+
+    // Auto-draw on load
+    drawScene();
+  </script>
+</body>
+</html>

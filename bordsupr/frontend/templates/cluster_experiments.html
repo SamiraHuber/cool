@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cluster Experiments</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f6f7fb; color: #1f2430; }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 340px 1fr; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 8px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+    .metric { border: 1px solid #d8dee8; border-radius: 8px; padding: 10px; background: #fbfcff; }
+    .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .example-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 4px; }
+    .thumb { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; background: #eef2f7; border-radius: 4px; }
+    .thumb.wrong { border: 2px solid #e03131; }
+    .heat-cell { transition: background-color 0.2s; }
+    .best-cell { box-shadow: inset 0 0 0 2px #198754; font-weight: bold; }
+    .variant-desc { font-size: 11px; font-weight: normal; color: #637182; }
+    .sortable-header { cursor: pointer; user-select: none; }
+    .sortable-header:hover { background-color: #e9ecef; }
+    .sort-indicator { font-size: 10px; margin-left: 4px; }
+    @media (max-width: 980px) { .workspace { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Run Variants</h5>
+        <div class="muted">Cluster a saved testset with different modular setups.</div>
+      </div>
+      <div class="panel-body">
+        <label class="form-label" for="testsetSelect">Saved testset</label>
+        <select id="testsetSelect" class="form-select"></select>
+
+        <label class="form-label mt-3">Strategies</label>
+        <div id="strategyList" class="d-flex flex-column gap-1">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="strat_whole" value="whole" checked><label class="form-check-label" for="strat_whole">Whole Image</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="strat_upscaled_lanczos" value="upscaled_lanczos"><label class="form-check-label" for="strat_upscaled_lanczos">Lanczos Upscaled</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="strat_whole_wb_bright" value="whole_wb_bright"><label class="form-check-label" for="strat_whole_wb_bright">Whole Image + WB + Bright</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="strat_upscaled_esrgan" value="upscaled_esrgan"><label class="form-check-label" for="strat_upscaled_esrgan">Real-ESRGAN Upscaled</label></div>
+        </div>
+
+        <label class="form-label mt-3">Model families</label>
+        <div id="modelFamilyList" class="d-flex flex-column gap-1">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_dinov3" value="dinov3" checked><label class="form-check-label" for="fam_dinov3">DINOv3</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_vit" value="vit"><label class="form-check-label" for="fam_vit">ViT</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_osnet" value="osnet" checked><label class="form-check-label" for="fam_osnet">OSNet</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_osnet_finetuned" value="osnet_finetuned" checked><label class="form-check-label" for="fam_osnet_finetuned">OSNet Fine-tuned</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_osnet_finetuned_improved" value="osnet_finetuned_improved" checked><label class="form-check-label" for="fam_osnet_finetuned_improved">OSNet Fine-tuned Improved</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_convnext" value="convnext"><label class="form-check-label" for="fam_convnext">ConvNeXt-Tiny</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_efficientnetv2" value="efficientnetv2"><label class="form-check-label" for="fam_efficientnetv2">EfficientNetV2</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_deit" value="deit"><label class="form-check-label" for="fam_deit">DeiT</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_swin" value="swin"><label class="form-check-label" for="fam_swin">Swin Transformer</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_clip" value="clip"><label class="form-check-label" for="fam_clip">CLIP</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="fam_sam2" value="sam2"><label class="form-check-label" for="fam_sam2">SAM 2</label></div>
+        </div>
+
+        <label class="form-label mt-3">Clustering methods</label>
+        <div id="clusterMethodList" class="d-flex flex-column gap-1">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="method_greedy" value="greedy" checked><label class="form-check-label" for="method_greedy">Greedy Cosine (threshold-based)</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="method_hdbscan" value="hdbscan"><label class="form-check-label" for="method_hdbscan">HDBSCAN (density-based)</label></div>
+        </div>
+
+        <label class="form-label mt-3" for="thresholdInput">Override threshold(s)</label>
+        <input id="thresholdInput" class="form-control" type="text" placeholder="e.g. 0.85, 0.88, 0.92 (empty = auto: best from history or 3 fallbacks)" />
+
+        
+
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-success" onclick="runExperiment()">Run in Foreground</button>
+          <button class="btn btn-outline-success" onclick="runBackgroundExperiment()">Run in Background</button>
+          <button class="btn btn-outline-secondary" onclick="loadTestsets()">Refresh Testsets</button>
+          <a class="btn btn-outline-primary" href="/cluster-testsets">Build Testset</a>
+        </div>
+
+        <hr>
+        <div class="fw-semibold mb-2">Background Jobs</div>
+        <div id="jobsPanel" class="mb-2" style="max-height: 260px; overflow-y: auto;">
+          <div class="muted" style="font-size:12px;">No background jobs yet.</div>
+        </div>
+
+        <hr>
+        <div class="fw-semibold mb-2">Saved Experiments</div>
+        <select id="experimentSelect" class="form-select mb-2"></select>
+        <div class="d-grid gap-2">
+          <button class="btn btn-outline-success" onclick="saveCurrentExperiment()" id="saveExpBtn" disabled>Save Current Results</button>
+          <button class="btn btn-outline-primary" onclick="loadSelectedExperiment()">Load Selected</button>
+          <button class="btn btn-outline-primary" onclick="downloadSelectedExperimentCsv()">Download Selected CSV</button>
+          <button class="btn btn-outline-secondary" onclick="downloadCurrentResultsCsv()" id="downloadCsvBtn" disabled>Download Current CSV</button>
+          <button class="btn btn-outline-danger" onclick="deleteSelectedExperiment()">Delete Selected</button>
+        </div>
+
+        <div id="status" class="muted mt-3">Loading...</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Results</h5>
+        <div id="resultMeta" class="muted">No run yet.</div>
+      </div>
+      <div id="results" class="panel-body">
+        <div id="comparisonTableWrap" class="mb-4" style="display:none;">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <h6 class="mb-0">Metric Comparison</h6>
+            <select id="sortSelect" class="form-select form-select-sm" style="width:auto;" onchange="applySort()">
+              <option value="">Default order</option>
+              <option value="pairwise_f1:desc">Sort by F1 ↓</option>
+              <option value="pairwise_f1:asc">Sort by F1 ↑</option>
+              <option value="cluster_purity:desc">Sort by Purity ↓</option>
+              <option value="cluster_purity:asc">Sort by Purity ↑</option>
+              <option value="pairwise_precision:desc">Sort by Precision ↓</option>
+              <option value="pairwise_precision:asc">Sort by Precision ↑</option>
+              <option value="pairwise_recall:desc">Sort by Recall ↓</option>
+              <option value="pairwise_recall:asc">Sort by Recall ↑</option>
+              <option value="num_pred_clusters:asc">Sort by Pred Clusters closest to GT</option>
+            </select>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered" id="comparisonTable">
+              <thead class="table-light">
+                <tr id="comparisonHeader"></tr>
+              </thead>
+              <tbody id="comparisonBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="variantResults"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const selectEl = document.getElementById('testsetSelect');
+    const variantListEl = document.getElementById('variantList');
+    const resultsEl = document.getElementById('results');
+    const resultMetaEl = document.getElementById('resultMeta');
+    const comparisonTableWrap = document.getElementById('comparisonTableWrap');
+    const comparisonHeader = document.getElementById('comparisonHeader');
+    const comparisonBody = document.getElementById('comparisonBody');
+    const variantResultsEl = document.getElementById('variantResults');
+    const experimentSelect = document.getElementById('experimentSelect');
+    const saveExpBtn = document.getElementById('saveExpBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const sortSelect = document.getElementById('sortSelect');
+    let variants = [];
+    let currentResults = [];
+    let currentTestsetId = null;
+    let currentThresholds = [];
+
+    function escapeHtml(value) {
+      return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+    }
+
+    function fmt(value) {
+      if (value === null || value === undefined || value === false) return 'n/a';
+      if (typeof value === 'number') return value.toFixed(3);
+      return String(value);
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data));
+      return data;
+    }
+
+    const STRATEGY_MAP = {
+      'whole': { label: 'Whole Image', variants: { dinov3: 'whole_embedding', vit: 'vit_whole', osnet: 'osnet_whole', osnet_finetuned: 'osnet_finetuned_whole', osnet_finetuned_improved: 'osnet_finetuned_improved_whole', convnext: 'convnext_whole', efficientnetv2: 'efficientnetv2_whole', deit: 'deit_whole', swin: 'swin_whole', clip: 'clip_whole', sam2: 'sam2_whole' } },
+      'upscaled_lanczos': { label: 'Lanczos Upscaled', variants: { dinov3: 'upscaled_lanczos', vit: 'vit_upscaled_lanczos', osnet: 'osnet_upscaled_lanczos', osnet_finetuned: 'osnet_finetuned_upscaled_lanczos', osnet_finetuned_improved: 'osnet_finetuned_improved_upscaled_lanczos', convnext: 'convnext_upscaled_lanczos', efficientnetv2: 'efficientnetv2_upscaled_lanczos', deit: 'deit_upscaled_lanczos', swin: 'swin_upscaled_lanczos', clip: 'clip_upscaled_lanczos', sam2: 'sam2_upscaled_lanczos' } },
+      'whole_wb_bright': { label: 'Whole Image + WB + Bright', variants: { dinov3: 'whole_embedding_wb_bright', vit: 'vit_whole_wb_bright', osnet: 'osnet_whole_wb_bright', osnet_finetuned: 'osnet_finetuned_whole_wb_bright', osnet_finetuned_improved: 'osnet_finetuned_improved_whole_wb_bright', convnext: 'convnext_whole_wb_bright', efficientnetv2: 'efficientnetv2_whole_wb_bright', deit: 'deit_whole_wb_bright', swin: 'swin_whole_wb_bright', clip: 'clip_whole_wb_bright', sam2: 'sam2_whole_wb_bright' } },
+      'upscaled_esrgan': { label: 'Real-ESRGAN Upscaled', variants: { dinov3: 'upscaled_esrgan', vit: 'vit_upscaled_esrgan', osnet: 'osnet_upscaled_esrgan', osnet_finetuned: 'osnet_finetuned_upscaled_esrgan', osnet_finetuned_improved: 'osnet_finetuned_improved_upscaled_esrgan', convnext: 'convnext_upscaled_esrgan', efficientnetv2: 'efficientnetv2_upscaled_esrgan', deit: 'deit_upscaled_esrgan', swin: 'swin_upscaled_esrgan', clip: 'clip_upscaled_esrgan', sam2: 'sam2_upscaled_esrgan' } },
+    };
+
+    function getSelectedStrategies() {
+      return Array.from(document.querySelectorAll('#strategyList input[type="checkbox"]:checked')).map(cb => cb.value);
+    }
+
+    function getSelectedFamilies() {
+      return Array.from(document.querySelectorAll('#modelFamilyList input[type="checkbox"]:checked')).map(cb => cb.value);
+    }
+
+    function getSelectedClusterMethods() {
+      return Array.from(document.querySelectorAll('#clusterMethodList input[type="checkbox"]:checked')).map(cb => cb.value);
+    }
+
+    function generateVariantIds() {
+      const strategies = getSelectedStrategies();
+      const families = getSelectedFamilies();
+      const variantIds = [];
+      for (const strat of strategies) {
+        const mapping = STRATEGY_MAP[strat];
+        if (!mapping) continue;
+        for (const fam of families) {
+          const vid = mapping.variants[fam];
+          if (vid) variantIds.push(vid);
+        }
+      }
+      return variantIds;
+    }
+
+    async function loadDefaults() {
+      await fetchJson('/api/cluster-testsets/defaults');
+      statusEl.textContent = 'Ready.';
+    }
+
+    async function loadTestsets() {
+      const payload = await fetchJson('/api/cluster-testsets');
+      selectEl.innerHTML = payload.testsets.map(testset => `
+        <option value="${escapeHtml(testset.id)}">${escapeHtml(testset.name || testset.id)} (${testset.image_count})</option>
+      `).join('');
+      statusEl.textContent = payload.testsets.length ? 'Ready.' : 'No saved testsets. Build one first.';
+    }
+
+    async function loadExperiments() {
+      try {
+        const payload = await fetchJson('/api/cluster-experiments');
+        experimentSelect.innerHTML = '<option value="">-- select saved experiment --</option>' +
+          payload.experiments.map(exp => `
+            <option value="${escapeHtml(exp.id)}">${escapeHtml(exp.name)} · ${exp.variant_count} runs</option>
+          `).join('');
+      } catch (err) {
+        experimentSelect.innerHTML = '<option value="">-- no experiments --</option>';
+      }
+    }
+
+    function heatStyle(value, key, gtValue) {
+      if (value === null || value === undefined || value === false || typeof value !== 'number') return '';
+      let t = 0;
+      if (['pairwise_f1', 'cluster_purity', 'pairwise_precision', 'pairwise_recall'].includes(key)) {
+        t = Math.max(0, Math.min(1, value));
+      } else if (key === 'num_pred_clusters' && gtValue && gtValue > 0) {
+        t = Math.min(value, gtValue) / Math.max(value, gtValue);
+      } else {
+        return '';
+      }
+      const hue = Math.round(120 * t);
+      return `background-color: hsl(${hue}, 80%, 90%);`;
+    }
+
+    function findBestIndex(values, key, gtValue) {
+      if (values.length === 0) return -1;
+      if (key === 'num_gt_ids') return -1;
+      if (key === 'num_pred_clusters') {
+        if (!gtValue) return -1;
+        let bestIdx = 0;
+        let bestDiff = Math.abs(values[0] - gtValue);
+        for (let i = 1; i < values.length; i++) {
+          const diff = Math.abs(values[i] - gtValue);
+          if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+        }
+        return bestIdx;
+      }
+      let bestIdx = 0;
+      for (let i = 1; i < values.length; i++) {
+        if (values[i] > values[bestIdx]) bestIdx = i;
+      }
+      return bestIdx;
+    }
+
+    function sortResults(results, sortKey, sortDir) {
+      if (!sortKey) return [...results];
+      const gtValue = (results[0].metrics || {}).num_gt_ids || null;
+      return [...results].sort((a, b) => {
+        const av = (a.metrics || {})[sortKey];
+        const bv = (b.metrics || {})[sortKey];
+        if (sortKey === 'num_pred_clusters' && gtValue) {
+          const ad = Math.abs(av - gtValue);
+          const bd = Math.abs(bv - gtValue);
+          return sortDir === 'asc' ? ad - bd : bd - ad;
+        }
+        if (typeof av === 'number' && typeof bv === 'number') {
+          return sortDir === 'asc' ? av - bv : bv - av;
+        }
+        return 0;
+      });
+    }
+
+    function renderComparisonTable(results) {
+      if (!results || results.length === 0) {
+        comparisonTableWrap.style.display = 'none';
+        return;
+      }
+      const metricRows = [
+        { key: 'pairwise_f1', label: 'Pairwise F1', good: '1.0 = perfect balance of precision & recall' },
+        { key: 'cluster_purity', label: 'Purity', good: '1.0 = every cluster contains only one identity' },
+        { key: 'pairwise_precision', label: 'Precision', good: '1.0 = no pairs from different IDs are merged' },
+        { key: 'pairwise_recall', label: 'Recall', good: '1.0 = all pairs from same ID are kept together' },
+        { key: 'num_gt_ids', label: 'GT IDs', good: 'Ground-truth unique identities in testset' },
+        { key: 'num_pred_clusters', label: 'Pred Clusters', good: 'Closer to GT IDs = better' },
+      ];
+      const gtValue = (results[0].metrics || {}).num_gt_ids || null;
+      comparisonHeader.innerHTML = '<th>Metric</th>' + results.map(r => `
+        <th>
+          <div>${escapeHtml(r.label)}</div>
+          <div class="variant-desc">${escapeHtml(r.description || '')}</div>
+          <div class="variant-desc" style="font-weight:600;color:#0b6e4f;">@${escapeHtml(r.threshold)}</div>
+        </th>
+      `).join('');
+      comparisonBody.innerHTML = metricRows.map(row => {
+        const values = results.map(r => (r.metrics || {})[row.key]);
+        const bestIdx = findBestIndex(values, row.key, gtValue);
+        const cells = values.map((v, idx) => {
+          const style = heatStyle(v, row.key, gtValue);
+          const bestClass = idx === bestIdx ? 'best-cell' : '';
+          return `<td class="heat-cell ${bestClass}" style="${style}">${fmt(v)}</td>`;
+        }).join('');
+        return `<tr><td class="fw-semibold">${escapeHtml(row.label)}<br><span class="muted" style="font-size:11px;">${escapeHtml(row.good)}</span></td>${cells}</tr>`;
+      }).join('');
+      comparisonTableWrap.style.display = '';
+    }
+
+    function applySort() {
+      const sortVal = sortSelect.value;
+      if (!sortVal) {
+        renderComparisonTable(currentResults);
+        variantResultsEl.innerHTML = currentResults.map(renderVariant).join('');
+        return;
+      }
+      const [key, dir] = sortVal.split(':');
+      const sorted = sortResults(currentResults, key, dir);
+      renderComparisonTable(sorted);
+      variantResultsEl.innerHTML = sorted.map(renderVariant).join('');
+    }
+
+    function renderVariant(result) {
+      const metrics = result.metrics || {};
+      const clusters = result.clusters || [];
+      return `
+        <div class="panel mb-3">
+          <div class="panel-head">
+            <h5 class="mb-1">${escapeHtml(result.label)}</h5>
+            <div class="muted">${escapeHtml(result.variant)} · threshold ${escapeHtml(result.threshold)} · ${clusters.length} clusters</div>
+          </div>
+          <div class="panel-body">
+            <div class="metric-grid mb-3">
+              <div class="metric"><div class="muted">Pairwise F1</div><strong>${fmt(metrics.pairwise_f1)}</strong></div>
+              <div class="metric"><div class="muted">Purity</div><strong>${fmt(metrics.cluster_purity)}</strong></div>
+              <div class="metric"><div class="muted">GT IDs</div><strong>${fmt(metrics.num_gt_ids)}</strong></div>
+              <div class="metric"><div class="muted">Pred Clusters</div><strong>${fmt(metrics.num_pred_clusters)}</strong></div>
+              <div class="metric"><div class="muted">Precision</div><strong>${fmt(metrics.pairwise_precision)}</strong></div>
+              <div class="metric"><div class="muted">Recall</div><strong>${fmt(metrics.pairwise_recall)}</strong></div>
+            </div>
+            <div class="cluster-grid">
+              ${clusters.slice(0, 24).map(cluster => `
+                <div class="panel p-2">
+                  <div class="fw-semibold">Cluster ${escapeHtml(cluster.cluster_id)} · ${cluster.size}</div>
+                  <div class="example-row mt-2">
+                    ${(cluster.examples || []).map(example => `
+                      <div>
+                        <img class="thumb ${example.is_wrong ? 'wrong' : ''}" src="${example.image_url}" alt="${escapeHtml(example.filename)}">
+                        <div class="muted text-truncate">id ${escapeHtml(example.label?.identity ?? 'n/a')}</div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function runExperiment() {
+      const testsetId = selectEl.value;
+      if (!testsetId) return;
+      currentTestsetId = testsetId;
+      const thresholdRaw = document.getElementById('thresholdInput').value.trim();
+      const useAutoThresholds = !thresholdRaw;
+      const thresholds = useAutoThresholds
+        ? [null]
+        : thresholdRaw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
+      currentThresholds = thresholds;
+      const selectedVariants = generateVariantIds();
+      if (selectedVariants.length === 0) {
+        statusEl.textContent = 'No variants selected. Choose at least one strategy and one model family.';
+        return;
+      }
+      const clusterMethods = getSelectedClusterMethods();
+      if (clusterMethods.length === 0) {
+        statusEl.textContent = 'No clustering method selected.';
+        return;
+      }
+      const modeLabel = useAutoThresholds ? 'auto-threshold' : `${thresholds.length} threshold sweep`;
+      statusEl.textContent = `Running ${modeLabel} · ${selectedVariants.length} variants × ${clusterMethods.length} methods...`;
+      variantResultsEl.innerHTML = '';
+      comparisonTableWrap.style.display = 'none';
+      saveExpBtn.disabled = true;
+      downloadCsvBtn.disabled = true;
+      let allResults = [];
+      let totalElapsed = 0;
+      try {
+        const runs = [];
+        for (const cm of clusterMethods) {
+          for (let i = 0; i < thresholds.length; i++) {
+            runs.push({ t: thresholds[i], label: 'baseline', clusterMethod: cm });
+          }
+        }
+        for (let r = 0; r < runs.length; r++) {
+          const run = runs[r];
+          const passLabel = run.label;
+          const tLabel = useAutoThresholds ? 'auto' : (run.t ?? 'default');
+          statusEl.textContent = `Running ${passLabel} threshold ${tLabel} (${r + 1}/${runs.length}) · ${selectedVariants.length} variants · method=${run.clusterMethod} · ~${(selectedVariants.length * 0.5).toFixed(0)} min expected on CPU...`;
+          const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(testsetId)}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              variants: selectedVariants,
+              threshold: run.t,
+              cluster_method: run.clusterMethod,
+              auto_thresholds: useAutoThresholds,
+            }),
+          });
+          totalElapsed += payload.elapsed_sec;
+          const tagged = payload.results.map(res => ({
+            ...res,
+            label: res.label + ` [${run.clusterMethod}]`,
+            variant: res.variant + `_${run.clusterMethod}`,
+            threshold: res.threshold,
+          }));
+          allResults = allResults.concat(tagged);
+        }
+        currentResults = allResults;
+        const families = getSelectedFamilies().join(',');
+        const strategies = getSelectedStrategies().join(',');
+        resultMetaEl.textContent = `${modeLabel} · ${allResults.length} variant runs · methods=[${clusterMethods.join(',')}] · families=[${families}] · strategies=[${strategies}] · ${totalElapsed.toFixed(1)}s total`;
+        sortSelect.value = '';
+        renderComparisonTable(allResults);
+        variantResultsEl.innerHTML = allResults.map(renderVariant).join('');
+        saveExpBtn.disabled = false;
+        downloadCsvBtn.disabled = false;
+        statusEl.textContent = 'Done.';
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function runBackgroundExperiment() {
+      const testsetId = selectEl.value;
+      if (!testsetId) return;
+      const thresholdRaw = document.getElementById('thresholdInput').value.trim();
+      const useAutoThresholds = !thresholdRaw;
+      const thresholds = useAutoThresholds
+        ? [null]
+        : thresholdRaw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
+      const selectedVariants = generateVariantIds();
+      if (selectedVariants.length === 0) {
+        statusEl.textContent = 'No variants selected. Choose at least one strategy and one model family.';
+        return;
+      }
+      const clusterMethods = getSelectedClusterMethods();
+      if (clusterMethods.length === 0) {
+        statusEl.textContent = 'No clustering method selected.';
+        return;
+      }
+      try {
+        statusEl.textContent = 'Starting background experiment...';
+        const payload = await fetchJson(`/api/cluster-testsets/${encodeURIComponent(testsetId)}/experiment-jobs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            variants: selectedVariants,
+            threshold: thresholds.length === 1 ? thresholds[0] : null,
+            cluster_method: clusterMethods[0],
+            cluster_methods: clusterMethods,
+            auto_thresholds: useAutoThresholds,
+          }),
+        });
+        statusEl.textContent = `Background job started: ${escapeHtml(payload.id)}`;
+        await loadJobs();
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function loadJobs() {
+      try {
+        const payload = await fetchJson('/api/cluster-experiments/jobs');
+        renderJobs(payload.jobs || []);
+      } catch (err) {
+        renderJobs([]);
+      }
+    }
+
+    function renderJobs(jobs) {
+      const panel = document.getElementById('jobsPanel');
+      if (!jobs.length) {
+        panel.innerHTML = '<div class="muted" style="font-size:12px;">No background jobs yet.</div>';
+        return;
+      }
+      panel.innerHTML = jobs.map(job => {
+        const statusClass = job.status === 'failed' ? 'text-danger' : (job.status === 'completed' ? 'text-success' : 'text-primary');
+        const progress = job.total_runs ? `${job.completed_runs}/${job.total_runs}` : '-';
+        const latest = job.latest_result ? `· latest ${escapeHtml(job.latest_result.variant || '')} @${escapeHtml(job.latest_result.threshold ?? 'n/a')} F1=${fmt(job.latest_result.pairwise_f1)}` : '';
+        const expLink = job.experiment_id ? `<a href="/cluster-experiments?exp=${escapeHtml(job.experiment_id)}" class="small">Open ${escapeHtml(job.experiment_name || job.experiment_id)}</a>` : '';
+        const error = job.error ? `<div class="text-danger small" style="white-space:pre-wrap;">${escapeHtml(job.error)}</div>` : '';
+        return `
+          <div class="mb-2 p-2 border rounded" style="background:#fbfcff;">
+            <div class="d-flex justify-content-between">
+              <strong class="small">${escapeHtml(job.name || job.id)}</strong>
+              <span class="small ${statusClass}">${escapeHtml(job.status)}</span>
+            </div>
+            <div class="muted small">${progress} runs ${latest}</div>
+            <div class="small">${expLink}</div>
+            ${error}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function saveCurrentExperiment() {
+      if (!currentResults.length || !currentTestsetId) return;
+      const name = prompt('Name for this experiment:', `exp-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}`);
+      if (!name) return;
+      statusEl.textContent = 'Saving experiment...';
+      try {
+        await fetchJson('/api/cluster-experiments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(),
+            testset_id: currentTestsetId,
+            results: currentResults,
+            thresholds: currentThresholds,
+          }),
+        });
+        statusEl.textContent = 'Experiment saved.';
+        await loadExperiments();
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function loadSelectedExperiment() {
+      const expId = experimentSelect.value;
+      if (!expId) return;
+      statusEl.textContent = 'Loading experiment...';
+      try {
+        const payload = await fetchJson(`/api/cluster-experiments/${encodeURIComponent(expId)}`);
+        currentResults = payload.results || [];
+        currentTestsetId = payload.testset_id;
+        currentThresholds = payload.thresholds || [];
+        resultMetaEl.textContent = `${escapeHtml(payload.name)} · ${currentResults.length} variant runs · saved ${payload.saved_at}`;
+        sortSelect.value = '';
+        renderComparisonTable(currentResults);
+        variantResultsEl.innerHTML = currentResults.map(renderVariant).join('');
+        saveExpBtn.disabled = false;
+        downloadCsvBtn.disabled = false;
+        statusEl.textContent = 'Experiment loaded.';
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function deleteSelectedExperiment() {
+      const expId = experimentSelect.value;
+      if (!expId) return;
+      if (!confirm('Delete this saved experiment?')) return;
+      statusEl.textContent = 'Deleting experiment...';
+      try {
+        await fetchJson(`/api/cluster-experiments/${encodeURIComponent(expId)}`, { method: 'DELETE' });
+        statusEl.textContent = 'Experiment deleted.';
+        await loadExperiments();
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    async function downloadSelectedExperimentCsv() {
+      const expId = experimentSelect.value;
+      if (!expId) return alert('Select a saved experiment first.');
+      window.open(`/api/cluster-experiments/${encodeURIComponent(expId)}/csv`, '_blank');
+    }
+
+    async function downloadCurrentResultsCsv() {
+      if (!currentResults.length) return alert('No results to download. Run an experiment first.');
+      statusEl.textContent = 'Generating CSV...';
+      try {
+        const res = await fetch('/api/cluster-experiments/download-csv', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ results: currentResults }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data));
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cluster-results-${new Date().toISOString().slice(0,19).replace(/:/g,'')}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        statusEl.textContent = 'CSV downloaded.';
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger">${escapeHtml(String(err))}</span>`;
+      }
+    }
+
+    Promise.all([loadDefaults(), loadTestsets(), loadExperiments()]).catch(err => statusEl.textContent = String(err));
+    setInterval(() => loadJobs(), 3000);
+    window.runExperiment = runExperiment;
+    window.runBackgroundExperiment = runBackgroundExperiment;
+    window.loadTestsets = loadTestsets;
+    window.saveCurrentExperiment = saveCurrentExperiment;
+    window.loadSelectedExperiment = loadSelectedExperiment;
+    window.deleteSelectedExperiment = deleteSelectedExperiment;
+    window.downloadSelectedExperimentCsv = downloadSelectedExperimentCsv;
+    window.downloadCurrentResultsCsv = downloadCurrentResultsCsv;
+    window.applySort = applySort;
+  </script>
+</body>
+</html>

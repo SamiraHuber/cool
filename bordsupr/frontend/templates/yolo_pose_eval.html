@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOLO Pose Evaluation</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f6f7fb; color: #1f2430; }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 380px 1fr; gap: 16px; align-items: start; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 8px; overflow: hidden; }
+    .panel-head { padding: 12px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 14px 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .section-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #1f2430; }
+    .form-label-sm { font-size: 12px; font-weight: 500; margin-bottom: 4px; }
+    .image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; padding: 10px; }
+    .image-card { border: 1px solid #d8dee8; border-radius: 6px; overflow: hidden; background: #fff; }
+    .image-card:hover { border-color: #2563eb; }
+    .image-card img { width: 100%; height: 100px; object-fit: cover; display: block; cursor: pointer; }
+    .image-card.labeled { border-color: #22c55e; background: #f0fdf4; }
+    .image-card.labeled:hover { border-color: #16a34a; }
+    .image-card.unlabeled { border-color: #d8dee8; background: #fff; }
+    .image-card .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .image-card .status-dot.labeled { background: #22c55e; }
+    .image-card .status-dot.unlabeled { background: #cbd5e1; }
+    .image-card-footer { padding: 4px 6px; font-size: 10px; color: #637182; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .results-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .results-table th { padding: 6px 8px; border-bottom: 1px solid #d8dee8; background: #fbfcff; color: #637182; font-weight: 600; text-align: left; position: sticky; top: 0; }
+    .results-table td { padding: 6px 8px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+    .results-table tr:hover td { background: #f8fafc; }
+    .job-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #eef2f7; font-size: 12px; }
+    .job-row:last-child { border-bottom: none; }
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .status-queued { background: #e2e8f0; color: #475569; }
+    .status-running { background: #dbeafe; color: #1d4ed8; }
+    .status-done { background: #d1fae5; color: #065f46; }
+    .status-error { background: #fee2e2; color: #991b1b; }
+    .progress-bar-wrap { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+    .progress-bar-fill { height: 100%; background: #2563eb; transition: width 0.3s; }
+    .btn-xs { padding: 2px 8px; font-size: 11px; }
+    .model-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid #d8dee8; border-radius: 6px; font-size: 11px; background: #fff; margin: 2px; }
+    .model-chip input { margin: 0; }
+    textarea.json-editor { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; min-height: 200px; }
+    @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; } }
+
+    /* Annotation modal */
+    .anno-modal { position: fixed; inset: 0; background: rgba(12, 18, 28, 0.88); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .anno-modal.open { display: flex; }
+    .anno-modal-inner { max-width: min(1200px, 98vw); max-height: 96vh; display: flex; flex-direction: column; gap: 10px; }
+    .anno-stage { position: relative; display: inline-block; background: #111827; border-radius: 8px; overflow: hidden; max-height: calc(96vh - 120px); }
+    .anno-stage img { max-width: min(1160px, 94vw); max-height: calc(96vh - 120px); object-fit: contain; display: block; }
+    .anno-overlay { position: absolute; inset: 0; cursor: crosshair; }
+    .anno-rect { position: absolute; border: 2px solid #22c55e; background: rgba(34, 197, 94, 0.08); border-radius: 3px; cursor: pointer; }
+    .anno-rect.selected { border-color: #f59e0b; background: rgba(245, 158, 11, 0.15); z-index: 10; }
+    .anno-rect:hover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.12); }
+    .anno-label-tag { position: absolute; top: -18px; left: 0; background: #22c55e; color: #fff; font-size: 10px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; pointer-events: none; }
+    .anno-rect.selected .anno-label-tag { background: #f59e0b; }
+    .anno-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .anno-toolbar .btn { font-size: 12px; }
+    .anno-close { position: fixed; top: 10px; right: 16px; color: #fff; background: transparent; border: 0; font-size: 32px; line-height: 1; }
+    .anno-info { color: #e2e8f0; font-size: 12px; }
+    .anno-nav { display: flex; gap: 8px; }
+    .anno-rect.draw-pass-through { pointer-events: none; }
+    .results-table th.sortable { cursor: pointer; user-select: none; }
+    .results-table th.sortable:hover { background: #eef2f7; }
+    .results-table th.sort-asc::after { content: ' ▲'; font-size: 10px; }
+    .results-table th.sort-desc::after { content: ' ▼'; font-size: 10px; }
+    .results-table tr.result-row { cursor: pointer; }
+    .results-table tr.result-row:hover td { background: #eef2f7; }
+    .results-table tr.result-row.expanded td { background: #dbeafe; }
+    .detail-row td { padding: 0; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .detail-panel { padding: 12px; }
+    .detail-image-card { border: 1px solid #d8dee8; border-radius: 6px; background: #fff; margin-bottom: 8px; overflow: hidden; }
+    .detail-image-header { padding: 6px 10px; background: #f1f5f9; font-size: 11px; font-weight: 600; color: #334155; }
+    .detail-box-list { padding: 6px 10px; font-size: 11px; }
+    .detail-box-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+    .badge-tp { background: #d1fae5; color: #065f46; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .badge-fp { background: #fee2e2; color: #991b1b; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .badge-fn { background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .detail-placeholder { color: #94a3b8; font-size: 12px; padding: 8px; }
+    .viz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; padding: 10px; }
+    .viz-card { border: 1px solid #d8dee8; border-radius: 6px; overflow: hidden; background: #fff; }
+    .viz-card img { width: 100%; height: 160px; object-fit: cover; display: block; }
+    .viz-card-footer { padding: 4px 8px; font-size: 11px; color: #637182; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <!-- Left panel: controls -->
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-0">YOLO Pose Eval</h5>
+        <div class="muted">Label a dataset, run models, compare metrics.</div>
+      </div>
+      <div class="panel-body" style="max-height: calc(100vh - 140px); overflow-y: auto;">
+
+        <!-- Dataset section -->
+        <div class="section-title">Dataset</div>
+        <div class="input-group input-group-sm mb-2">
+          <input id="folderInput" class="form-control" value="{{ video_publisher_default_frame_dir }}" placeholder="/path/to/images" />
+          <button class="btn btn-outline-secondary" onclick="scanFolder()">Scan</button>
+        </div>
+        <div class="d-flex gap-2 mb-2">
+          <div class="form-check form-check-inline mb-0">
+            <input id="recursiveInput" class="form-check-input" type="checkbox" checked />
+            <label class="form-check-label" style="font-size:12px" for="recursiveInput">Recursive</label>
+          </div>
+        </div>
+        <div class="muted mb-2" id="scanStatus">No folder scanned.</div>
+
+        <div class="section-title">Ground Truth</div>
+        <div class="input-group input-group-sm mb-2">
+          <input id="gtPathInput" class="form-control" value="/workspace/src/bordsupr/resource/labeled_yolo.json" placeholder="/path/to/ground_truth.json" />
+        </div>
+        <div class="d-flex gap-2 mb-2 flex-wrap">
+          <button class="btn btn-sm btn-outline-primary" onclick="loadGroundTruth()">Load</button>
+          <button class="btn btn-sm btn-outline-primary" onclick="saveGroundTruth()">Save</button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="autoLabel()">Auto-label</button>
+        </div>
+        <div class="form-check form-check-inline mb-2">
+          <input id="gtFormatXywh" class="form-check-input" type="checkbox" />
+          <label class="form-check-label" style="font-size:12px" for="gtFormatXywh">XYWH format</label>
+        </div>
+
+        <!-- Configuration section -->
+        <div class="section-title mt-3">Configuration</div>
+
+        <div class="mb-2">
+          <label class="form-label-sm">YOLO Models</label>
+          <div id="modelsList" class="d-flex flex-wrap">
+            <span class="muted">Loading models…</span>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label-sm">Zero-shot Models</label>
+          <div class="d-flex flex-wrap gap-1">
+            <label class="model-chip">
+              <input type="checkbox" value="google/owlv2-base-patch16-ensemble" class="zs-model-check" data-type="owlv2" />
+              OWL-ViT v2
+            </label>
+            <label class="model-chip">
+              <input type="checkbox" value="IDEA-Research/grounding-dino-base" class="zs-model-check" data-type="grounding_dino" />
+              Grounding DINO
+            </label>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label-sm">Text prompt (zero-shot)</label>
+          <input id="textPromptInput" class="form-control form-control-sm" value="person, chair, ball, bottle" />
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label-sm">Ablations (sweep)</label>
+          <div class="d-flex flex-column gap-1">
+            <div class="form-check form-check-inline mb-0">
+              <input id="ablBrightness" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" style="font-size:12px" for="ablBrightness">Brightness correction (CLAHE) — tested per model</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input id="ablCropRedetect" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" style="font-size:12px" for="ablCropRedetect">Crop person + redetect — tested per model</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label-sm">Tracker (sweep)</label>
+          <div class="d-flex flex-column gap-1">
+            <div class="form-check form-check-inline mb-0">
+              <input id="trackerByteTrack" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" style="font-size:12px" for="trackerByteTrack">ByteTrack</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input id="trackerBoTSORT" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" style="font-size:12px" for="trackerBoTSORT">BoTSORT</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input id="trackerStrongSort" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" style="font-size:12px" for="trackerStrongSort">StrongSort</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+              <input id="trackerEFStrongSort" class="form-check-input" type="checkbox" />
+              <label class="form-check-label" style="font-size:12px" for="trackerEFStrongSort">EF-StrongSort <span class="muted">(no ReID)</span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label-sm">Confidence thresholds <span class="muted">(leave empty for auto)</span></label>
+          <input id="confInput" class="form-control form-control-sm" value="0.25, 0.5" placeholder="e.g. 0.25, 0.5" />
+          <div class="muted mt-1" id="confHint">Leave empty to auto-select: YOLO → 0.25, 0.5 · OWLv2 → 0.001–0.02 · Grounding DINO → 0.001–0.05</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label-sm">Image sizes</label>
+          <input id="imgszInput" class="form-control form-control-sm" value="640" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label-sm">Device</label>
+          <select id="deviceInput" class="form-select form-select-sm">
+            <option value="0">cuda:0</option>
+            <option value="cpu">cpu</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label-sm">Classes (blank = all)</label>
+          <input id="classesInput" class="form-control form-control-sm" value="person, chair, ball, bottle" />
+        </div>
+        <button class="btn btn-sm btn-success w-100 mt-2" onclick="runEvaluation()">Run Evaluation</button>
+
+        <!-- Jobs section -->
+        <div class="section-title mt-3">Jobs</div>
+        <div id="jobsList" class="border rounded" style="max-height: 240px; overflow-y: auto;">
+          <div class="muted p-2">No jobs yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right panel: content -->
+    <section class="panel" style="min-height: calc(100vh - 140px);">
+      <div class="panel-head d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="mb-0" id="rightPanelTitle">Images</h5>
+          <div class="muted" id="rightPanelSubtitle">Scan a folder to browse images.</div>
+        </div>
+        <div class="btn-group btn-group-sm" id="rightPanelTabs">
+          <button class="btn btn-outline-secondary active" onclick="showTab('images')" id="tabBtn-images">Images</button>
+          <button class="btn btn-outline-secondary" onclick="showTab('gt')" id="tabBtn-gt">JSON Editor</button>
+          <button class="btn btn-outline-secondary" onclick="showTab('results')" id="tabBtn-results">Results</button>
+        </div>
+      </div>
+
+      <div id="tab-images" class="panel-body p-0">
+        <div class="p-2 d-flex gap-2 align-items-center border-bottom" style="background:#fbfcff;">
+          <span class="muted">Show:</span>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary active" id="filter-all" onclick="setImageFilter('all')">All</button>
+            <button class="btn btn-outline-secondary" id="filter-labeled" onclick="setImageFilter('labeled')">Labeled</button>
+            <button class="btn btn-outline-secondary" id="filter-unlabeled" onclick="setImageFilter('unlabeled')">Unlabeled</button>
+          </div>
+        </div>
+        <div class="image-grid" id="imageGrid">
+          <div class="muted p-3">No images scanned.</div>
+        </div>
+      </div>
+
+      <div id="tab-gt" class="panel-body" style="display:none">
+        <textarea id="gtEditor" class="form-control json-editor" placeholder="[{&quot;image_path&quot;:&quot;...&quot;,&quot;boxes&quot;:[{&quot;label&quot;:&quot;person&quot;,&quot;x1&quot;:0,&quot;y1&quot;:0,&quot;x2&quot;:10,&quot;y2&quot;:10}]}]"></textarea>
+        <div class="muted mt-2">Edit the ground truth JSON directly. Each entry needs image_path and boxes (xyxy by default).</div>
+      </div>
+
+      <div id="tab-results" class="panel-body p-0" style="display:none">
+        <div class="p-3" id="resultsPlaceholder">
+          <div class="muted">Run an evaluation to see results here.</div>
+        </div>
+        <div id="resultsContainer" style="display:none;">
+          <div style="overflow-x: auto;">
+            <table class="results-table" id="resultsTable">
+              <thead>
+                <tr>
+                  <th class="sortable" data-key="model">Model</th>
+                  <th class="sortable" data-key="model_type">Type</th>
+                  <th class="sortable" data-key="conf">Conf</th>
+                  <th class="sortable" data-key="imgsz">Imgsz</th>
+                  <th class="sortable" data-key="tracker">Tracker</th>
+                  <th class="sortable" data-key="tp">TP</th>
+                  <th class="sortable" data-key="fp">FP</th>
+                  <th class="sortable" data-key="fn">FN</th>
+                  <th class="sortable" data-key="precision">Precision</th>
+                  <th class="sortable" data-key="recall">Recall</th>
+                  <th class="sortable" data-key="f1">F1</th>
+                  <th class="sortable" data-key="ap50">AP50</th>
+                  <th class="sortable" data-key="ap50_95">AP50:95</th>
+                  <th class="sortable" data-key="elapsed_sec">Time</th>
+                </tr>
+              </thead>
+              <tbody id="resultsTableBody"></tbody>
+            </table>
+          </div>
+          <div class="p-3" style="border-top: 1px solid #d8dee8; background: #fbfcff;">
+            <div class="muted" style="font-size: 12px;">
+              <strong>TP</strong> = True Positive (correct detection, IoU ≥ 0.5)&nbsp;·
+              <strong>FP</strong> = False Positive (wrong detection or IoU &lt; 0.5)&nbsp;·
+              <strong>FN</strong> = False Negative (missed ground-truth box)
+            </div>
+          </div>
+          <div class="p-3 d-flex gap-2" id="downloadButtons" style="display:none;">
+            <a id="downloadCsv" class="btn btn-sm btn-outline-primary" href="#" download>Download CSV</a>
+            <a id="downloadJson" class="btn btn-sm btn-outline-primary" href="#" download>Download JSON</a>
+          </div>
+          <div id="vizContainer" style="display:none; border-top: 1px solid #d8dee8;">
+            <div class="p-2" style="background: #fbfcff; border-bottom: 1px solid #d8dee8;">
+              <span class="section-title mb-0">Example Detections</span>
+              <span class="muted" style="font-size: 11px;">Green = GT, Red = Predictions</span>
+            </div>
+            <div class="viz-grid" id="vizGrid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Annotation Modal -->
+  <div id="annoModal" class="anno-modal" onclick="closeAnnoModal(event)">
+    <button class="anno-close" type="button" onclick="closeAnnoModal(event)">&times;</button>
+    <div class="anno-modal-inner">
+      <div class="anno-stage" id="annoStage">
+        <img id="annoImg" alt="" />
+        <div class="anno-overlay" id="annoOverlay"></div>
+      </div>
+      <div class="anno-toolbar">
+        <div class="anno-nav">
+          <button class="btn btn-sm btn-outline-light" onclick="annoPrev()">&#8592; Prev</button>
+          <button class="btn btn-sm btn-outline-light" onclick="annoNext()">Next &#8594;</button>
+        </div>
+        <div class="anno-info" id="annoInfo"></div>
+        <div style="flex:1"></div>
+        <button id="annoModeBtn" class="btn btn-sm btn-outline-warning" onclick="toggleAnnoMode()">Mode: Select</button>
+        <input id="annoLabelInput" class="form-control form-control-sm" style="width:140px; font-size:12px;" placeholder="label" value="person" />
+        <button class="btn btn-sm btn-danger" onclick="deleteSelectedBox()">Delete</button>
+        <button class="btn btn-sm btn-primary" onclick="saveGroundTruthFromModal()">Save GT</button>
+        <button class="btn btn-sm btn-success" onclick="closeAnnoModalAndSave()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // State
+  let scannedImages = [];
+  let groundTruth = [];
+  let availableModels = [];
+  let currentJobId = null;
+  let pollInterval = null;
+  let currentResults = [];
+  let currentSortKey = null;
+  let currentSortDir = 'asc';
+  let lastLoadedJobId = null;
+  let lastLoadedSummaryLength = 0;
+  let expandedRowIdx = null;
+  let rowDetailCache = {}; // idx -> per_image data
+
+  // Annotation state
+  let annoImagePath = null;
+  let annoImageIdx = -1;
+  let annoBoxes = []; // {label, x1, y1, x2, y2}
+  let annoSelectedIdx = -1;
+  let annoIsDrawing = false;
+  let annoDrawStart = null;
+  let annoTempRect = null;
+  let annoMode = 'select'; // 'select' | 'draw'
+  let imageFilter = 'all'; // 'all' | 'labeled' | 'unlabeled'
+
+  // Table sorting
+  function renderResultsTable() {
+    const tbody = document.getElementById('resultsTableBody');
+    if (!currentResults.length) {
+      tbody.innerHTML = '';
+      return;
+    }
+    let html = '';
+    currentResults.forEach((r, idx) => {
+      const badges = [];
+      if (r.ablation_brightness) badges.push('B');
+      if (r.ablation_crop_redetect) badges.push('C');
+      const badgeStr = badges.length ? ' <span class="badge bg-warning text-dark" style="font-size:9px">' + badges.join('') + '</span>' : '';
+      const trackerLabel = r.tracker && r.tracker !== 'none' ? r.tracker : '-';
+      const isExpanded = expandedRowIdx === idx;
+      const errorBadge = r.error ? ' <span class="badge bg-danger" style="font-size:9px">ERR</span>' : '';
+      html += `
+      <tr class="result-row ${isExpanded ? 'expanded' : ''}" data-idx="${idx}" onclick="toggleRowDetail(${idx})">
+        <td>${r.model}${badgeStr}${errorBadge}</td>
+        <td>${r.model_type || 'yolo'}</td>
+        <td>${r.conf}</td>
+        <td>${r.imgsz}</td>
+        <td>${trackerLabel}</td>
+        <td>${r.tp}</td>
+        <td>${r.fp}</td>
+        <td>${r.fn}</td>
+        <td>${r.precision?.toFixed(3) || '-'}</td>
+        <td>${r.recall?.toFixed(3) || '-'}</td>
+        <td>${r.f1?.toFixed(3) || '-'}</td>
+        <td>${r.ap50?.toFixed(3) || '-'}</td>
+        <td>${r.ap50_95?.toFixed(3) || '-'}</td>
+        <td>${r.elapsed_sec?.toFixed(1) || '-'}s</td>
+      </tr>
+      `;
+      if (r.error && isExpanded) {
+        html += `<tr class="detail-row"><td colspan="14"><div class="alert alert-danger" style="font-size:12px; margin:4px 8px;">${r.error}</div></td></tr>`;
+      } else if (isExpanded) {
+        const cached = rowDetailCache[idx];
+        html += `<tr class="detail-row"><td colspan="14"><div class="detail-panel" id="detailPanel-${idx}">${cached ? renderDetailContent(cached) : '<div class="detail-placeholder">Loading…</div>'}</div></td></tr>`;
+      }
+    });
+    tbody.innerHTML = html;
+  }
+
+  async function toggleRowDetail(idx) {
+    if (expandedRowIdx === idx) {
+      expandedRowIdx = null;
+      renderResultsTable();
+      return;
+    }
+    expandedRowIdx = idx;
+    renderResultsTable();
+    if (!rowDetailCache[idx] && lastLoadedJobId) {
+      try {
+        const res = await fetch('/api/yolo-pose-eval/jobs/' + lastLoadedJobId + '/config/' + idx);
+        if (res.ok) {
+          const data = await res.json();
+          rowDetailCache[idx] = data.per_image || [];
+          const panel = document.getElementById('detailPanel-' + idx);
+          if (panel) panel.innerHTML = renderDetailContent(rowDetailCache[idx]);
+        }
+      } catch (e) {
+        const panel = document.getElementById('detailPanel-' + idx);
+        if (panel) panel.innerHTML = '<div class="detail-placeholder">Error loading details</div>';
+      }
+    }
+  }
+
+  function renderDetailContent(perImage) {
+    if (!perImage || !perImage.length) return '<div class="detail-placeholder">No per-image data available.</div>';
+    return perImage.map(item => {
+      const filename = item.image.split('/').pop();
+      const gtItems = (item.gt_boxes || []).map((b, i) => {
+        const status = b.matched ? '<span class="badge-tp">TP</span>' : '<span class="badge-fn">FN</span>';
+        return `<div class="detail-box-item">${status} GT:${b.label} (${Math.round(b.x1)},${Math.round(b.y1)},${Math.round(b.x2)},${Math.round(b.y2)})</div>`;
+      }).join('');
+      const detItems = (item.det_boxes || []).map((b, i) => {
+        const status = b.status === 'tp' ? '<span class="badge-tp">TP</span>' : '<span class="badge-fp">FP</span>';
+        const scoreStr = b.score !== undefined ? ` ${b.score.toFixed(3)}` : '';
+        const trackStr = b.track_id !== undefined && b.track_id !== null ? ` T${b.track_id}` : '';
+        return `<div class="detail-box-item">${status} DET:${b.label}${trackStr}${scoreStr} (${Math.round(b.x1)},${Math.round(b.y1)},${Math.round(b.x2)},${Math.round(b.y2)})</div>`;
+      }).join('');
+      return `
+        <div class="detail-image-card">
+          <div class="detail-image-header">${filename} — TP:${item.tp} FP:${item.fp} FN:${item.fn}</div>
+          <div class="detail-box-list">
+            ${gtItems || '<div class="detail-box-item muted">No GT boxes</div>'}
+            ${detItems || '<div class="detail-box-item muted">No detections</div>'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function sortResults(key) {
+    if (currentSortKey === key) {
+      currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSortKey = key;
+      currentSortDir = 'asc';
+    }
+    currentResults.sort((a, b) => {
+      let av = a[key] ?? -Infinity;
+      let bv = b[key] ?? -Infinity;
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      if (av < bv) return currentSortDir === 'asc' ? -1 : 1;
+      if (av > bv) return currentSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    renderResultsTable();
+    document.querySelectorAll('#resultsTable th').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.key === currentSortKey) {
+        th.classList.add(currentSortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+  }
+
+  document.querySelectorAll('#resultsTable th.sortable').forEach(th => {
+    th.addEventListener('click', () => sortResults(th.dataset.key));
+  });
+
+  // Tabs
+  function showTab(name) {
+    document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+    document.getElementById('tab-' + name).style.display = 'block';
+    document.querySelectorAll('#rightPanelTabs button').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tabBtn-' + name).classList.add('active');
+  }
+
+  // Scan folder
+  async function scanFolder() {
+    const folder = document.getElementById('folderInput').value.trim();
+    const recursive = document.getElementById('recursiveInput').checked;
+    if (!folder) return alert('Enter a folder path');
+    document.getElementById('scanStatus').textContent = 'Scanning…';
+    try {
+      const res = await fetch(`/api/yolo-pose-eval/scan?folder=${encodeURIComponent(folder)}&recursive=${recursive}&limit=500`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Scan failed');
+      scannedImages = data.images || [];
+      document.getElementById('scanStatus').textContent = `${data.total} image(s) found${data.total > scannedImages.length ? ' (showing first ' + scannedImages.length + ')' : ''}`;
+      renderImageGrid();
+      loadModels();
+      showTab('images');
+    } catch (e) {
+      document.getElementById('scanStatus').textContent = 'Error: ' + e.message;
+    }
+  }
+
+  function setImageFilter(mode) {
+    imageFilter = mode;
+    document.querySelectorAll('[id^="filter-"]').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('filter-' + mode).classList.add('active');
+    renderImageGrid();
+  }
+
+  function renderImageGrid() {
+    const grid = document.getElementById('imageGrid');
+    if (!scannedImages.length) {
+      grid.innerHTML = '<div class="muted p-3">No images scanned.</div>';
+      document.getElementById('rightPanelSubtitle').textContent = 'No images scanned.';
+      return;
+    }
+
+    let labeledCount = 0;
+    let unlabeledCount = 0;
+
+    const html = scannedImages.map((img, idx) => {
+      const rec = findGtRecord(img.path);
+      const boxCount = rec ? rec.boxes.length : 0;
+      const isLabeled = boxCount > 0;
+      if (isLabeled) labeledCount++; else unlabeledCount++;
+
+      if (imageFilter === 'labeled' && !isLabeled) return '';
+      if (imageFilter === 'unlabeled' && isLabeled) return '';
+
+      const cardClass = isLabeled ? 'image-card labeled' : 'image-card unlabeled';
+      const dotClass = isLabeled ? 'status-dot labeled' : 'status-dot unlabeled';
+      const badge = isLabeled
+        ? `<span class="badge bg-success" style="font-size:9px">${boxCount}</span>`
+        : `<span class="badge bg-secondary" style="font-size:9px">0</span>`;
+
+      return `
+        <div class="${cardClass}">
+          <img src="/api/yolo-pose-eval/image?path=${encodeURIComponent(img.path)}" loading="lazy" alt="" onclick="openAnnoModal(${idx})" />
+          <div class="image-card-footer d-flex justify-content-between align-items-center">
+            <span title="${img.filename}"><span class="${dotClass}"></span>${img.filename}</span>
+            ${badge}
+          </div>
+          <div class="px-2 pb-2">
+            <button class="btn btn-xs btn-outline-primary w-100" onclick="openAnnoModal(${idx})">Label</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    grid.innerHTML = html || '<div class="muted p-3">No images match the current filter.</div>';
+    document.getElementById('rightPanelSubtitle').textContent = `${scannedImages.length} total · ${labeledCount} labeled · ${unlabeledCount} unlabeled`;
+  }
+
+  // Ground truth helpers
+  function findGtRecord(imagePath) {
+    const filename = imagePath.split('/').pop();
+    return groundTruth.find(g => g.image_path === imagePath || g.image_path.endsWith('/' + filename) || g.image_path === filename);
+  }
+
+  function ensureGtRecord(imagePath) {
+    let rec = findGtRecord(imagePath);
+    if (!rec) {
+      rec = { image_path: imagePath, boxes: [] };
+      groundTruth.push(rec);
+    }
+    return rec;
+  }
+
+  function syncGroundTruthToEditor() {
+    document.getElementById('gtEditor').value = JSON.stringify(groundTruth, null, 2);
+  }
+
+  // Annotation modal
+  function openAnnoModal(idx) {
+    if (idx < 0 || idx >= scannedImages.length) return;
+    annoImageIdx = idx;
+    annoImagePath = scannedImages[idx].path;
+    const rec = findGtRecord(annoImagePath);
+    annoBoxes = (rec && rec.boxes) ? JSON.parse(JSON.stringify(rec.boxes)) : [];
+    annoSelectedIdx = -1;
+
+    const img = document.getElementById('annoImg');
+    img.src = '/api/yolo-pose-eval/image?path=' + encodeURIComponent(annoImagePath);
+    img.onload = () => { renderAnnoBoxes(); };
+    if (img.complete) renderAnnoBoxes();
+
+    document.getElementById('annoModal').classList.add('open');
+    updateAnnoInfo();
+  }
+
+  function closeAnnoModal(event) {
+    if (event && event.target && event.target.id !== 'annoModal' && !event.target.classList.contains('anno-close')) return;
+    document.getElementById('annoModal').classList.remove('open');
+    annoImagePath = null;
+    annoImageIdx = -1;
+    annoBoxes = [];
+    annoSelectedIdx = -1;
+    annoIsDrawing = false;
+    annoDrawStart = null;
+    if (annoTempRect) { annoTempRect.remove(); annoTempRect = null; }
+  }
+
+  function syncCurrentAnnoToGroundTruth() {
+    if (!annoImagePath) return;
+    const rec = ensureGtRecord(annoImagePath);
+    rec.boxes = annoBoxes.map(b => ({ label: b.label || 'person', x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 }));
+    syncGroundTruthToEditor();
+    renderImageGrid();
+  }
+
+  async function saveGroundTruthFromModal() {
+    syncCurrentAnnoToGroundTruth();
+    const path = getGtPath();
+    if (!path) {
+      setAnnoSaveStatus('Set a GT path first', 'error');
+      return;
+    }
+    try {
+      const res = await fetch('/api/yolo-pose-eval/ground-truth', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path, data: groundTruth})
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail || 'Save failed');
+      setAnnoSaveStatus('Saved', 'success');
+    } catch (e) {
+      setAnnoSaveStatus('Error: ' + e.message, 'error');
+    }
+  }
+
+  let _annoSaveStatusTimer = null;
+  function setAnnoSaveStatus(text, type) {
+    const el = document.getElementById('annoInfo');
+    const original = `${annoImageIdx + 1}/${scannedImages.length}  ·  ${annoImagePath ? annoImagePath.split('/').pop() : ''}  ·  ${annoBoxes.length} box(es)`;
+    el.textContent = text;
+    el.style.color = type === 'error' ? '#fca5a5' : '#86efac';
+    if (_annoSaveStatusTimer) clearTimeout(_annoSaveStatusTimer);
+    _annoSaveStatusTimer = setTimeout(() => {
+      el.textContent = original;
+      el.style.color = '';
+    }, 2000);
+  }
+
+  function closeAnnoModalAndSave() {
+    syncCurrentAnnoToGroundTruth();
+    closeAnnoModal();
+  }
+
+  function annoPrev() {
+    if (annoImageIdx > 0) {
+      closeAnnoModalAndSave();
+      openAnnoModal(annoImageIdx - 1);
+    }
+  }
+
+  function annoNext() {
+    if (annoImageIdx < scannedImages.length - 1) {
+      closeAnnoModalAndSave();
+      openAnnoModal(annoImageIdx + 1);
+    }
+  }
+
+  function updateAnnoInfo() {
+    const filename = annoImagePath ? annoImagePath.split('/').pop() : '';
+    document.getElementById('annoInfo').textContent = `${annoImageIdx + 1}/${scannedImages.length}  ·  ${filename}  ·  ${annoBoxes.length} box(es)`;
+  }
+
+  function toggleAnnoMode() {
+    annoMode = annoMode === 'select' ? 'draw' : 'select';
+    const btn = document.getElementById('annoModeBtn');
+    if (annoMode === 'draw') {
+      btn.textContent = 'Mode: Draw';
+      btn.classList.remove('btn-outline-warning');
+      btn.classList.add('btn-warning');
+    } else {
+      btn.textContent = 'Mode: Select';
+      btn.classList.remove('btn-warning');
+      btn.classList.add('btn-outline-warning');
+    }
+    renderAnnoBoxes();
+  }
+
+  function isAnnoDrawMode(e) {
+    return annoMode === 'draw' || (e && e.shiftKey);
+  }
+
+  // Drawing logic
+  const overlay = document.getElementById('annoOverlay');
+
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    annoIsDrawing = true;
+    annoDrawStart = { x, y };
+    annoSelectedIdx = -1;
+    renderAnnoBoxes();
+  });
+
+  overlay.addEventListener('mousemove', (e) => {
+    if (!annoIsDrawing || !annoDrawStart) return;
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const left = Math.min(annoDrawStart.x, x);
+    const top = Math.min(annoDrawStart.y, y);
+    const width = Math.abs(x - annoDrawStart.x);
+    const height = Math.abs(y - annoDrawStart.y);
+
+    if (!annoTempRect) {
+      annoTempRect = document.createElement('div');
+      annoTempRect.className = 'anno-rect';
+      annoTempRect.style.borderStyle = 'dashed';
+      overlay.appendChild(annoTempRect);
+    }
+    annoTempRect.style.left = left + 'px';
+    annoTempRect.style.top = top + 'px';
+    annoTempRect.style.width = width + 'px';
+    annoTempRect.style.height = height + 'px';
+  });
+
+  overlay.addEventListener('mouseup', (e) => {
+    if (!annoIsDrawing || !annoDrawStart) return;
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    annoIsDrawing = false;
+    if (annoTempRect) { annoTempRect.remove(); annoTempRect = null; }
+
+    const img = document.getElementById('annoImg');
+    const imgRect = img.getBoundingClientRect();
+    const stageRect = document.getElementById('annoStage').getBoundingClientRect();
+
+    // Calculate scale factor between displayed image and natural image
+    const scaleX = img.naturalWidth / imgRect.width;
+    const scaleY = img.naturalHeight / imgRect.height;
+
+    // Mouse coords relative to displayed image
+    const dispX1 = Math.min(annoDrawStart.x, x) - (imgRect.left - stageRect.left);
+    const dispY1 = Math.min(annoDrawStart.y, y) - (imgRect.top - stageRect.top);
+    const dispX2 = Math.max(annoDrawStart.x, x) - (imgRect.left - stageRect.left);
+    const dispY2 = Math.max(annoDrawStart.y, y) - (imgRect.top - stageRect.top);
+
+    // Clamp to image bounds
+    const clampedX1 = Math.max(0, Math.min(dispX1, imgRect.width));
+    const clampedY1 = Math.max(0, Math.min(dispY1, imgRect.height));
+    const clampedX2 = Math.max(0, Math.min(dispX2, imgRect.width));
+    const clampedY2 = Math.max(0, Math.min(dispY2, imgRect.height));
+
+    const natX1 = clampedX1 * scaleX;
+    const natY1 = clampedY1 * scaleY;
+    const natX2 = clampedX2 * scaleX;
+    const natY2 = clampedY2 * scaleY;
+
+    if (Math.abs(natX2 - natX1) > 2 && Math.abs(natY2 - natY1) > 2) {
+      const label = document.getElementById('annoLabelInput').value.trim() || 'person';
+      annoBoxes.push({ label, x1: natX1, y1: natY1, x2: natX2, y2: natY2 });
+      annoSelectedIdx = annoBoxes.length - 1;
+      updateAnnoInfo();
+    }
+    annoDrawStart = null;
+    renderAnnoBoxes();
+  });
+
+  overlay.addEventListener('mouseleave', () => {
+    if (annoIsDrawing) {
+      annoIsDrawing = false;
+      annoDrawStart = null;
+      if (annoTempRect) { annoTempRect.remove(); annoTempRect = null; }
+    }
+  });
+
+  function renderAnnoBoxes() {
+    const overlay = document.getElementById('annoOverlay');
+    // Remove existing rects (keep overlay itself)
+    overlay.querySelectorAll('.anno-rect').forEach(el => el.remove());
+
+    const img = document.getElementById('annoImg');
+    const imgRect = img.getBoundingClientRect();
+    const stageRect = document.getElementById('annoStage').getBoundingClientRect();
+    const scaleX = imgRect.width / img.naturalWidth;
+    const scaleY = imgRect.height / img.naturalHeight;
+
+    if (!img.naturalWidth || !img.naturalHeight) return;
+
+    annoBoxes.forEach((box, idx) => {
+      const left = (box.x1 * scaleX) + (imgRect.left - stageRect.left);
+      const top = (box.y1 * scaleY) + (imgRect.top - stageRect.top);
+      const width = (box.x2 - box.x1) * scaleX;
+      const height = (box.y2 - box.y1) * scaleY;
+
+      const el = document.createElement('div');
+      el.className = 'anno-rect' + (idx === annoSelectedIdx ? ' selected' : '') + (isAnnoDrawMode() ? ' draw-pass-through' : '');
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      el.style.width = width + 'px';
+      el.style.height = height + 'px';
+
+      const tag = document.createElement('div');
+      tag.className = 'anno-label-tag';
+      tag.textContent = box.label || 'person';
+      el.appendChild(tag);
+
+      el.addEventListener('mousedown', (e) => {
+        if (isAnnoDrawMode(e)) {
+          // Let the overlay handle drawing; do not stop propagation
+          annoSelectedIdx = -1;
+          renderAnnoBoxes();
+          return;
+        }
+        e.stopPropagation();
+        annoSelectedIdx = idx;
+        document.getElementById('annoLabelInput').value = box.label || 'person';
+        renderAnnoBoxes();
+      });
+
+      overlay.appendChild(el);
+    });
+  }
+
+  function deleteSelectedBox() {
+    if (annoSelectedIdx >= 0 && annoSelectedIdx < annoBoxes.length) {
+      annoBoxes.splice(annoSelectedIdx, 1);
+      annoSelectedIdx = -1;
+      updateAnnoInfo();
+      renderAnnoBoxes();
+    }
+  }
+
+  document.getElementById('annoLabelInput').addEventListener('change', () => {
+    if (annoSelectedIdx >= 0 && annoSelectedIdx < annoBoxes.length) {
+      annoBoxes[annoSelectedIdx].label = document.getElementById('annoLabelInput').value.trim() || 'person';
+      renderAnnoBoxes();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const modal = document.getElementById('annoModal');
+    if (!modal.classList.contains('open')) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      // Only delete if not typing in an input
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      deleteSelectedBox();
+    }
+    if (e.key === 'ArrowLeft' && e.altKey) { e.preventDefault(); annoPrev(); }
+    if (e.key === 'ArrowRight' && e.altKey) { e.preventDefault(); annoNext(); }
+    if (e.key === 'Escape') { closeAnnoModalAndSave(); }
+  });
+
+  // Models
+  async function loadModels() {
+    try {
+      const res = await fetch('/api/yolo-pose-eval/models');
+      const data = await res.json();
+      availableModels = data.models || [];
+      const list = document.getElementById('modelsList');
+      if (!availableModels.length) {
+        list.innerHTML = '<span class="muted">No .pt or .onnx models found.</span>';
+        return;
+      }
+      list.innerHTML = availableModels.map(m => `
+        <label class="model-chip">
+          <input type="checkbox" value="${m.path}" class="model-check" />
+          ${m.name}
+        </label>
+      `).join('');
+    } catch (e) {
+      console.warn('Failed to load models', e);
+    }
+  }
+
+  // Ground truth
+  function getGtPath() {
+    return document.getElementById('gtPathInput').value.trim();
+  }
+
+  async function loadGroundTruth() {
+    const path = getGtPath();
+    if (!path) return alert('Enter a ground truth JSON path');
+    try {
+      const res = await fetch('/api/yolo-pose-eval/ground-truth/load', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path})
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Load failed');
+      groundTruth = data.data || [];
+      document.getElementById('gtEditor').value = JSON.stringify(groundTruth, null, 2);
+      showTab('gt');
+      alert(`Loaded ${groundTruth.length} record(s)`);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
+  async function saveGroundTruth() {
+    const path = getGtPath();
+    if (!path) return alert('Enter a ground truth JSON path');
+    let data;
+    try {
+      data = JSON.parse(document.getElementById('gtEditor').value);
+    } catch (e) {
+      return alert('Invalid JSON: ' + e.message);
+    }
+    try {
+      const res = await fetch('/api/yolo-pose-eval/ground-truth', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path, data})
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail || 'Save failed');
+      alert('Saved to ' + result.path);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
+  async function autoLabel() {
+    const folder = document.getElementById('folderInput').value.trim();
+    if (!folder) return alert('Enter an image folder first');
+    const modelChecks = document.querySelectorAll('.model-check:checked');
+    const model = modelChecks.length ? modelChecks[0].value : 'yolov8n-pose.pt';
+    document.getElementById('scanStatus').textContent = 'Auto-labelling…';
+    try {
+      const res = await fetch('/api/yolo-pose-eval/auto-label', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          image_folder: folder,
+          model,
+          model_type: 'yolo',
+          recursive: document.getElementById('recursiveInput').checked
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Auto-label failed');
+      groundTruth = data.records || [];
+      document.getElementById('gtEditor').value = JSON.stringify(groundTruth, null, 2);
+      document.getElementById('scanStatus').textContent = `Auto-labelled ${data.count} image(s)`;
+      showTab('gt');
+    } catch (e) {
+      document.getElementById('scanStatus').textContent = 'Error: ' + e.message;
+    }
+  }
+
+  // Evaluation
+  async function runEvaluation() {
+    const gtPath = getGtPath();
+    if (!gtPath) return alert('Enter a ground truth JSON path');
+
+    // Build model configs with ablation combinations
+    const textPrompt = document.getElementById('textPromptInput').value.trim() || 'person';
+    const brightnessChecked = document.getElementById('ablBrightness').checked;
+    const cropChecked = document.getElementById('ablCropRedetect').checked;
+    const byteTrackChecked = document.getElementById('trackerByteTrack').checked;
+    const botSortChecked = document.getElementById('trackerBoTSORT').checked;
+    const strongSortChecked = document.getElementById('trackerStrongSort').checked;
+    const efStrongSortChecked = document.getElementById('trackerEFStrongSort').checked;
+
+    const baseModels = [];
+    document.querySelectorAll('.model-check:checked').forEach(cb => {
+      baseModels.push({ path: cb.value, model_type: 'yolo', text_prompt: textPrompt });
+    });
+    document.querySelectorAll('.zs-model-check:checked').forEach(cb => {
+      baseModels.push({ path: cb.value, model_type: cb.dataset.type, text_prompt: textPrompt });
+    });
+
+    if (!baseModels.length) return alert('Select at least one model (YOLO or zero-shot)');
+
+    // Build tracker list: always include 'none', plus any checked trackers
+    const trackers = ['none'];
+    if (byteTrackChecked) trackers.push('bytetrack');
+    if (botSortChecked) trackers.push('botsort');
+    if (strongSortChecked) trackers.push('strongsort');
+    if (efStrongSortChecked) trackers.push('ef-strongsort');
+
+    // Generate all combinations: base + each checked ablation + each tracker
+    const models = [];
+    for (const base of baseModels) {
+      const ablationVariants = [];
+      // Always include the base model (no ablations)
+      ablationVariants.push({ ablation_brightness: false, ablation_crop_redetect: false });
+      if (brightnessChecked) {
+        ablationVariants.push({ ablation_brightness: true, ablation_crop_redetect: false });
+      }
+      if (cropChecked) {
+        ablationVariants.push({ ablation_brightness: false, ablation_crop_redetect: true });
+      }
+      if (brightnessChecked && cropChecked) {
+        ablationVariants.push({ ablation_brightness: true, ablation_crop_redetect: true });
+      }
+      for (const abl of ablationVariants) {
+        for (const trk of trackers) {
+          models.push({ ...base, ...abl, tracker: trk });
+        }
+      }
+    }
+
+    const confStr = document.getElementById('confInput').value.trim();
+    const conf_thresholds = confStr ? confStr.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n)) : [];
+    const invalidConf = conf_thresholds.find(c => c < 0 || c > 1);
+    if (invalidConf !== undefined) return alert('Confidence thresholds must be between 0 and 1 (got ' + invalidConf + ')');
+
+    const imgszStr = document.getElementById('imgszInput').value;
+    const imgsz = imgszStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    if (!imgsz.length) return alert('Enter at least one image size');
+
+    const device = document.getElementById('deviceInput').value;
+    const classesStr = document.getElementById('classesInput').value.trim();
+    const classes = classesStr ? classesStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const gt_format = document.getElementById('gtFormatXywh').checked ? 'xywh' : 'xyxy';
+
+    const payload = {
+      models,
+      conf_thresholds,
+      imgsz,
+      device,
+      classes,
+      gt_path: gtPath,
+      gt_format,
+      image_folder: document.getElementById('folderInput').value.trim(),
+    };
+
+    try {
+      const res = await fetch('/api/yolo-pose-eval/run', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Run failed');
+      currentJobId = data.id;
+      startPolling();
+      showTab('results');
+      renderJobs();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
+  // Jobs polling
+  function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(async () => {
+      await renderJobs();
+      if (currentJobId) await loadJobResults(currentJobId);
+    }, 2000);
+  }
+
+  async function renderJobs() {
+    try {
+      const res = await fetch('/api/yolo-pose-eval/jobs');
+      const data = await res.json();
+      const jobs = data.jobs || [];
+      const container = document.getElementById('jobsList');
+      if (!jobs.length) {
+        container.innerHTML = '<div class="muted p-2">No jobs yet.</div>';
+        return;
+      }
+      container.innerHTML = jobs.map(job => {
+        const statusClass = 'status-' + (job.status || 'queued');
+        const isDone = job.status === 'done';
+        const isRunning = job.status === 'running';
+        const hasResults = Boolean(job.has_results) || isDone;
+        const hasCsv = Boolean(job.has_csv) || isDone;
+        const hasJson = Boolean(job.has_json) || isDone;
+        const viewBtn = hasResults ? `<button class="btn btn-xs btn-outline-success" onclick="openJobResults('${job.id}')">View</button>` : '';
+        const downloads = `
+          ${hasCsv ? `<a class="btn btn-xs btn-outline-primary" href="/api/yolo-pose-eval/jobs/${job.id}/results.csv" download="${job.id}.csv">CSV</a>` : ''}
+          ${hasJson ? `<a class="btn btn-xs btn-outline-primary" href="/api/yolo-pose-eval/jobs/${job.id}/results.json" download="${job.id}.json">JSON</a>` : ''}
+        `;
+        // Progress: use per-image progress when running, otherwise config-level
+        let progress = 0;
+        let progressLabel = '';
+        if (isRunning && job.progress && job.progress.total_images > 0) {
+          progress = Math.round((job.progress.completed_images || 0) / job.progress.total_images * 100);
+          progressLabel = `config ${job.progress.config_index || 0}/${job.progress.total_configs || job.total_configs || 0} \u2022 image ${job.progress.completed_images || 0}/${job.progress.total_images}`;
+        } else if (job.total_configs) {
+          progress = Math.round((job.completed_configs || 0) / job.total_configs * 100);
+          progressLabel = `${job.completed_configs || 0}/${job.total_configs || 0}`;
+        }
+        const runningDetail = (isRunning && job.progress && job.progress.model)
+          ? `<div class="muted mt-1" style="font-size:11px">${job.progress.model} @ ${job.progress.conf} (${job.progress.imgsz}px) ${progressLabel}</div>`
+          : '';
+        return `
+          <div class="job-row">
+            <div class="flex-grow-1">
+              <div class="d-flex align-items-center gap-2">
+                <span class="status-badge ${statusClass}">${job.status}</span>
+                <span class="fw-semibold">${job.name}</span>
+                <span class="muted">${progressLabel}</span>
+              </div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" style="width: ${progress}%"></div>
+              </div>
+              ${job.latest_result ? `<div class="muted mt-1">Latest: ${job.latest_result.model} @ ${job.latest_result.conf} ${job.latest_result.tracker && job.latest_result.tracker !== 'none' ? '(' + job.latest_result.tracker + ')' : ''} \u2192 AP50=${job.latest_result.ap50?.toFixed(3) || '?'}</div>` : ''}
+              ${runningDetail}
+              ${job.error ? `<div class="text-danger mt-1" style="font-size:11px">${job.error}</div>` : ''}
+            </div>
+            <div class="d-flex flex-column gap-1">
+              ${viewBtn}
+              ${downloads}
+              <button class="btn btn-xs btn-outline-danger" onclick="deleteJob('${job.id}')">Del</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      console.warn('Failed to load jobs', e);
+    }
+  }
+
+  async function deleteJob(jobId) {
+    if (!confirm('Delete job ' + jobId + '?')) return;
+    try {
+      await fetch('/api/yolo-pose-eval/jobs/' + jobId, {method: 'DELETE'});
+      renderJobs();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    }
+  }
+
+  async function openJobResults(jobId) {
+    currentJobId = jobId;
+    await loadJobResults(jobId);
+    showTab('results');
+  }
+
+  async function loadJobResults(jobId) {
+    try {
+      const res = await fetch('/api/yolo-pose-eval/jobs/' + jobId);
+      const job = await res.json();
+      if (!res.ok) return;
+
+      if ((job.status === 'done' || job.has_results) && job.summary) {
+        document.getElementById('resultsPlaceholder').style.display = 'none';
+        document.getElementById('resultsContainer').style.display = 'block';
+        document.getElementById('downloadButtons').style.display = 'flex';
+
+        // Only reset sort state when the data has actually changed (new job or new configs added)
+        if (jobId !== lastLoadedJobId || job.summary.length !== lastLoadedSummaryLength) {
+          currentResults = job.summary.slice();
+          currentSortKey = null;
+          currentSortDir = 'asc';
+          expandedRowIdx = null;
+          rowDetailCache = {};
+          document.querySelectorAll('#resultsTable th').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+          lastLoadedJobId = jobId;
+          lastLoadedSummaryLength = job.summary.length;
+        }
+
+        renderResultsTable();
+        document.getElementById('downloadCsv').href = '/api/yolo-pose-eval/jobs/' + jobId + '/results.csv';
+        document.getElementById('downloadJson').href = '/api/yolo-pose-eval/jobs/' + jobId + '/results.json';
+
+        // Render example detections
+        const vizPaths = job.viz_paths || [];
+        const vizGrid = document.getElementById('vizGrid');
+        const vizContainer = document.getElementById('vizContainer');
+        if (vizPaths.length) {
+          vizContainer.style.display = 'block';
+          vizGrid.innerHTML = vizPaths.map(vp => {
+            const filename = vp.split('/').pop();
+            return `
+              <div class="viz-card">
+                <img src="/api/yolo-pose-eval/jobs/${jobId}/viz/${encodeURIComponent(filename)}" alt="" />
+                <div class="viz-card-footer" title="${filename}">${filename}</div>
+              </div>
+            `;
+          }).join('');
+        } else {
+          vizContainer.style.display = 'none';
+          vizGrid.innerHTML = '';
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load job results', e);
+    }
+  }
+
+  // Re-render boxes on window resize when modal is open
+  window.addEventListener('resize', () => {
+    const modal = document.getElementById('annoModal');
+    if (modal.classList.contains('open')) renderAnnoBoxes();
+  });
+
+  // Init
+  loadModels();
+  renderJobs();
+  startPolling();
+  </script>
+</body>
+</html>

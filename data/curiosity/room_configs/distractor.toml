@@ -1,0 +1,18 @@
+# distractor: base world, episodes off, kitchen + meeting room are
+# distractor-heavy (3-5x churn, nearly all transient/distractor-class changes).
+# Plan: REBUTTAL_DATASET_V2_PLAN.md v2.1.
+extends = "base.toml"
+name = "distractor"
+
+[output]
+dir = "data/curiosity/datasets/distractor"
+
+# more departures from the heavy rooms
+[decisions.p_move.room_multipliers]
+kitchen = 4.0
+"meeting room" = 4.0
+
+# more arrivals to the heavy rooms (per-room-name affinity overrides)
+[decisions.base_affinity]
+kitchen = 3.0
+meeting = 1.2

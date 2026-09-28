@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scene Change Strategy</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; }
+    .workspace { padding: 16px; display: grid; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #d8dee8; border-radius: 14px; overflow: hidden; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid #d8dee8; background: #fbfcff; }
+    .panel-body { padding: 16px; }
+    .muted { color: #637182; font-size: 12px; }
+    .metric-card { background: #f8f9fa; border-radius: 10px; padding: 12px; text-align: center; }
+    .metric-value { font-size: 22px; font-weight: 700; }
+    .metric-label { font-size: 12px; color: #637182; }
+    .sim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); gap: 12px; }
+    .sim-col { border: 1px solid #dee2e6; border-radius: 8px; background: #fff; display: flex; flex-direction: column; }
+    .sim-col-header { padding: 8px 12px; border-bottom: 1px solid #e9ecef; background: #f8f9fa; border-radius: 8px 8px 0 0; font-weight: 600; font-size: 13px; }
+    .sim-col-body { padding: 8px; flex: 1; }
+    .sim-visit-card { border-radius: 6px; border: 1px solid #dee2e6; padding: 6px 8px; margin-bottom: 6px; font-size: 12px; }
+    .sim-visit-card.hit { border-color: #198754; background: #f0f9f4; }
+    .sim-visit-card.miss { border-color: #adb5bd; background: #f8f9fa; }
+    .confusion-cell { padding: 4px 8px; text-align: center; font-size: 13px; font-weight: 600; }
+    .result-table { font-size: 12px; }
+    .result-table th { font-size: 11px; color: #637182; white-space: nowrap; }
+    .result-table td { white-space: nowrap; }
+    .mini-metric { font-size: 10.5px; color: #495057; }
+    .mini-metric b { color: #212529; }
+    .metric-good { color: #198754; }
+    .metric-bad { color: #dc3545; }
+
+    /* Live step trace */
+    .live-trace { font-size: 11px; border: 1px solid #e9ecef; border-radius: 6px; }
+    .live-trace table { width: 100%; margin-bottom: 0; }
+    .live-trace th { position: sticky; top: 0; background: #f8f9fa; font-size: 10.5px; padding: 4px 8px; white-space: nowrap; z-index: 2; }
+    .live-trace td { padding: 3px 8px; white-space: nowrap; border-bottom: 1px solid #f0f0f0; }
+    .live-trace tr:hover { background: #f4f6fa; }
+    .step-badge { font-size: 9.5px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+    .step-stay { background: #e9ecef; color: #495057; }
+    .step-move { background: #cfe2ff; color: #084298; }
+    .step-hit { background: #d1e7dd; color: #0f5132; }
+    .step-miss { background: #f8d7da; color: #842029; }
+    .step-tool { background: #e0cffc; color: #4a148c; }
+    .step-error { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+    .progress-bar-container { height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+    .progress-bar-fill { height: 100%; background: #0d6efd; border-radius: 3px; transition: width 0.2s ease; }
+    .live-status { font-size: 11px; color: #495057; }
+
+    /* Modal detail blocks */
+    .detail-block { border: 1px solid #dee2e6; border-radius: 6px; padding: 10px; margin-bottom: 10px; background: #fff; }
+    .detail-label { font-size: 10.5px; font-weight: 700; color: #495057; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+    .detail-pre { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f4f6fa; padding: 8px 10px; border-radius: 4px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
+    .detail-tool-call { background: #f8f5fc; border: 1px solid #e0cffc; border-radius: 4px; padding: 6px 8px; }
+    .detail-scene { font-size: 11.5px; color: #334; line-height: 1.45; }
+    .detail-gt { font-size: 11px; color: #555; }
+    .inter-tuple { font-size: 10.5px; color: #334; background: #f4f6fa; border-radius: 4px; padding: 1px 5px; margin: 1px 3px 1px 0; display: inline-block; }
+    .inter-caption { font-size: 10.5px; color: #555; font-style: italic; }
+    .row-clickable { cursor: pointer; }
+
+    /* Change Matrix styles */
+    .change-matrix-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+    .change-matrix-container { display: inline-block; }
+    .change-matrix-row { display: flex; align-items: center; height: 22px; }
+    .change-matrix-room-label { width: 110px; font-size: 11px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; padding-right: 8px; text-align: right; }
+    .change-matrix-cells { display: flex; gap: 1px; }
+    .change-matrix-cell { width: 5px; height: 18px; border-radius: 1px; flex-shrink: 0; position: relative; }
+    .change-matrix-cell.no { background: #e9ecef; }
+    .change-matrix-cell.minor { background: #ffc107; }
+    .change-matrix-cell.major { background: #dc3545; }
+    .change-matrix-cell .pred-dot {
+      position: absolute;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 0.5px rgba(255,255,255,0.6);
+    }
+    .change-matrix-cell .pred-dot:nth-child(1) { left: 1px; bottom: 1px; }
+    .change-matrix-cell .pred-dot:nth-child(2) { left: 1px; bottom: 5px; }
+    .change-matrix-cell .pred-dot:nth-child(3) { left: 1px; bottom: 9px; }
+    .change-matrix-cell .pred-dot:nth-child(4) { left: 1px; bottom: 13px; }
+    .change-matrix-cell .pred-dot.correct { background: #20c997; }
+    .change-matrix-cell .pred-dot.wrong { background: #0d6efd; }
+    .change-matrix-cell .pred-dot.baseline { background: #6c757d; }
+    .change-matrix-time-row { display: flex; margin-left: 118px; height: 18px; position: relative; }
+    .change-matrix-time-tick { position: absolute; top: 2px; font-size: 9px; color: #637182; white-space: nowrap; transform: translateX(-50%); }
+    .change-matrix-legend { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 11px; color: #637182; }
+    .change-matrix-legend-swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+    /* Live metrics panel */
+    .live-metrics-panel { margin-bottom: 16px; }
+    .live-metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .live-metric-card { background: #fff; border: 1px solid #d8dee8; border-radius: 10px; padding: 12px; }
+    .live-metric-card.running { border-left: 3px solid #0d6efd; }
+    .live-metric-card.complete { border-left: 3px solid #198754; }
+    .live-metric-card.error { border-left: 3px solid #dc3545; }
+    .live-metric-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+    .live-metric-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin-bottom: 4px; }
+    .live-metric-value { font-weight: 600; }
+    .live-metric-mini-table { font-size: 10px; margin-top: 8px; }
+    .live-metric-mini-table td { padding: 2px 6px; text-align: center; font-weight: 600; }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <!-- Controls -->
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Scene Change Strategy Experiment</h5>
+        <div class="muted">Run navigation strategies against the scene-change dataset and compare change detection &amp; navigation quality. Steps stream live so you can verify behavior early. Click any row to inspect prompt, response, and ground truth.</div>
+      </div>
+      <div class="panel-body">
+        <div class="row g-3">
+          <div class="col-md-8">
+            <label class="form-label">Strategies</label>
+            <div class="d-flex flex-wrap gap-2">
+                                                                                    <!-- Core VLM agents (checked by default) -->
+                                                                                                                                                                                                                                <!-- Legacy / ablation agents (unchecked by default) -->
+                            <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="chk_agent_v2" value="agent_scene_change_v2">
+                <label class="form-check-label" for="chk_agent_v2">Agent V2 (Activity-Aware)</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="chk_agent_v3" value="agent_scene_change_v3">
+                <label class="form-check-label" for="chk_agent_v3">Agent V3 (Rate-Aware)</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="chk_agent_v4" value="agent_scene_change_v4">
+                <label class="form-check-label" for="chk_agent_v4">Agent V4 (Tool-Guided)</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="chk_agent_reactive_tools" value="agent_scene_change_reactive_tools">
+                <label class="form-check-label" for="chk_agent_reactive_tools">Reactive Tools</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" id="chk_agent_free_json" value="agent_scene_change_free_json">
+                <label class="form-check-label" for="chk_agent_free_json">Free JSON</label>
+              </div>
+            </div>
+            <div class="mt-2"><span class="badge bg-secondary">Ablation: VLM Detection + Baseline Navigation</span></div>
+            <div class="d-flex flex-wrap gap-2 align-items-center mt-1">
+              <select id="ablationDetector" class="form-select form-select-sm" style="width:auto; min-width:140px;">
+                <option value="agent_scene_change_v7">V7 (Entropy Explorer)</option>
+                <option value="agent_scene_change_v5_no_tools">V5 (No Tools)</option>
+                <option value="agent_scene_change_v6_no_tools">V6 (No Tools)</option>
+                <option value="agent_scene_change_v7_no_tools">V7 (No Tools)</option>
+                <option value="agent_scene_change_v8_no_tools">V8 (No Tools)</option>
+                <option value="agent_scene_change_v3">V3 (Rate-Aware)</option>
+                <option value="agent_scene_change_v4">V4 (Tool-Guided)</option>
+              </select>
+              <span class="text-muted">+</span>
+              <select id="ablationNavigator" class="form-select form-select-sm" style="width:auto; min-width:120px;">
+                <option value="native">Agent Native Navigation</option>
+                <option value="round_robin">Round Robin</option>
+              </select>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addAblation()">➕ Add</button>
+            </div>
+            <div id="ablationList" class="d-flex flex-wrap gap-2 mt-1"></div>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Datasets</label>
+            <div class="d-flex flex-wrap gap-2">
+              <div class="form-check">
+                <input class="form-check-input dataset-check" type="checkbox" id="dataset_default" value="default" checked>
+                <label class="form-check-label" for="dataset_default">Default</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input dataset-check" type="checkbox" id="dataset_adversarial" value="adversarial" checked>
+                <label class="form-check-label" for="dataset_adversarial">Adversarial</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input dataset-check" type="checkbox" id="dataset_regime" value="regime" checked>
+                <label class="form-check-label" for="dataset_regime">Regime</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-1">
+            <label class="form-label">Seed</label>
+            <input id="seedInput" type="number" class="form-control" value="42">
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="noToolsCheck" value="1">
+              <label class="form-check-label" for="noToolsCheck" style="font-size:12px;">No Tools</label>
+            </div>
+          </div>
+          <div class="col-md-1 d-flex align-items-end">
+            <button class="btn btn-primary w-100" id="runBtn" onclick="runExperiment()">Run</button>
+          </div>
+        </div>
+        <div class="row g-3 mt-2">
+          <div class="col-md-10">
+            <label class="form-label">Load Saved Results</label>
+            <div class="input-group">
+              <select class="form-select" id="savedResultSelect">
+                <option value="">Select a saved result file...</option>
+              </select>
+              <button class="btn btn-outline-secondary" type="button" onclick="refreshSavedResults()">🔄 Refresh</button>
+              <button class="btn btn-outline-primary" type="button" onclick="loadSelectedResult()">📂 Load</button>
+            </div>
+          </div>
+        </div>
+        <div id="experimentOutput" class="mt-4"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Step Detail Modal -->
+  <div class="modal fade" id="stepDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="stepDetailTitle">Step Detail</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="stepDetailBody"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let stepDetailModal = null;
+    document.addEventListener('DOMContentLoaded', () => {
+      stepDetailModal = new bootstrap.Modal(document.getElementById('stepDetailModal'));
+    });
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function truncateText(value, limit) {
+      limit = limit || 2000;
+      const text = String(value ?? '');
+      if (text.length <= limit) return text;
+      return text.slice(0, limit) + '\n\n[... truncated (' + (text.length - limit) + ' more characters) ...]';
+    }
+
+    // Accumulate step traces during streaming for per-strategy matrices
+    window._stepTraces = {};
+
+    async function fetchGtMatrix(dataset) {
+      const days = ['2026-05-26', '2026-05-27', '2026-05-28'];
+      const allTimestamps = [];
+      const rooms = ["kitchen", "storage", "office 1", "office 2", "office 3", "meeting room"];
+      const changes = rooms.map(() => []);
+      const deltas = rooms.map(() => []);
+
+      for (const day of days) {
+        try {
+          const url = `/api/scene-change-dataset?day=${day}${dataset ? '&dataset=' + encodeURIComponent(dataset) : ''}`;
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const data = await res.json();
+          const matrix = data.matrix || {};
+          const ts = matrix.timestamps || [];
+          allTimestamps.push(...ts);
+          (matrix.rooms || []).forEach((room, rIdx) => {
+            const roomIdx = rooms.indexOf(room);
+            if (roomIdx >= 0) {
+              (matrix.changes[rIdx] || []).forEach((ch, tIdx) => {
+                changes[roomIdx].push(ch);
+                deltas[roomIdx].push((matrix.deltas[rIdx] && matrix.deltas[rIdx][tIdx]) || {});
+              });
+            }
+          });
+        } catch (e) {
+          console.warn('Failed to fetch GT matrix for', day, e);
+        }
+      }
+      return { rooms, timestamps: allTimestamps, changes, deltas };
+    }
+
+    async function refreshSavedResults() {
+      const select = document.getElementById('savedResultSelect');
+      if (!select) return;
+      select.innerHTML = '<option value="">Loading...</option>';
+      try {
+        const res = await fetch(`/api/scene-change-results?_=${Date.now()}`);
+        const data = await res.json();
+        const files = data.files || [];
+        select.innerHTML = '<option value="">Select a saved result file...</option>' +
+          files.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+      } catch (e) {
+        select.innerHTML = '<option value="">Failed to load files</option>';
+        console.warn('Failed to fetch saved results:', e);
+      }
+    }
+
+    async function loadSelectedResult() {
+      const select = document.getElementById('savedResultSelect');
+      if (!select || !select.value) {
+        alert('Please select a saved result file first.');
+        return;
+      }
+      const out = document.getElementById('experimentOutput');
+      out.innerHTML = '<div class="muted mb-2">Loading saved results...</div>';
+      try {
+        const res = await fetch(`/api/scene-change-results/${encodeURIComponent(select.value)}?_=${Date.now()}`);
+        if (!res.ok) {
+          out.innerHTML = `<div class="alert alert-danger">Failed to load: ${res.status}</div>`;
+          return;
+        }
+        const data = await res.json();
+        const results = data.results || {};
+        // Mark all as complete since they are loaded from file
+        Object.keys(results).forEach(s => { results[s]._status = 'complete'; });
+        // Clear live traces since we don't have them for old runs
+        window._stepTraces = {};
+        // Fetch GT matrix for rendering
+        window._gtMatrix = await fetchGtMatrix();
+        renderFinalResults(out, results, select.value);
+      } catch (e) {
+        out.innerHTML = `<div class="alert alert-danger">Error loading results: ${escapeHtml(e.message)}</div>`;
+        console.error('Failed to load saved results:', e);
+      }
+    }
+
+    // Auto-populate saved results on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshSavedResults();
+    });
+
+    function renderChangeMatrix(matrix, strategyTraces) {
+      if (!matrix || !matrix.timestamps || !matrix.changes) return '';
+      const timestamps = matrix.timestamps;
+      const rooms = matrix.rooms || [];
+      const changes = matrix.changes;
+      const cellWidth = 6;
+
+      // Build correctness lookup per strategy using step_index for exact column matching
+      const strategyLookups = {};
+      for (const [strategy, trace] of Object.entries(strategyTraces || {})) {
+        const lookup = {};
+        (trace || []).forEach(step => {
+          if (!step || !step.room) return;
+          const colIdx = step.step_index !== undefined ? step.step_index : -1;
+          // step_index aligns with matrix column index; fall back to time_str only for legacy data
+          const key = colIdx >= 0 ? `${step.room}@${colIdx}` : `${step.room}@${step.time_str}`;
+          const gtChanged = step.gt_change_type === 'minor_change' || step.gt_change_type === 'major_change';
+          const hasVlm = step.vlm_detected_change !== undefined && step.vlm_detected_change !== null;
+          const vlmDetected = !!step.vlm_detected_change;
+          const isCorrect = hasVlm && ((vlmDetected && gtChanged) || (!vlmDetected && !gtChanged));
+          lookup[key] = { hasVlm, isCorrect, baseline: !hasVlm };
+        });
+        strategyLookups[strategy] = lookup;
+      }
+
+      // Detect day boundaries (time goes backwards => new day)
+      let currentDay = 1;
+      let lastTime = '';
+      const ticks = [];
+      let lastLabel = '';
+      for (let i = 0; i < timestamps.length; i++) {
+        const t = timestamps[i];
+        if (lastTime && t < lastTime) {
+          currentDay++;
+          lastLabel = ''; // reset dedup for new day
+        }
+        lastTime = t;
+        if (t.endsWith(':00') || t.endsWith(':30')) {
+          if (t !== lastLabel) {
+            ticks.push({ idx: i, label: t, day: currentDay });
+            lastLabel = t;
+          }
+        }
+      }
+
+      const rowsHtml = rooms.map((room, rIdx) => {
+        const cellsHtml = changes[rIdx].map((ch, tIdx) => {
+          const cls = ch === 'major_change' ? 'major' : (ch === 'minor_change' ? 'minor' : 'no');
+          const keyIdx = `${room}@${tIdx}`;
+          const keyTime = `${room}@${timestamps[tIdx]}`;
+          let dotsHtml = '';
+          for (const [strategy, lookup] of Object.entries(strategyLookups)) {
+            const info = lookup[keyIdx] || lookup[keyTime];
+            if (info) {
+              const dotCls = info.baseline ? 'baseline' : (info.isCorrect ? 'correct' : 'wrong');
+              dotsHtml += `<div class="pred-dot ${dotCls}" title="${escapeHtml(strategy)}: ${info.isCorrect ? '✓' : (info.baseline ? 'baseline' : '✗')}"></div>`;
+            }
+          }
+          return `<div class="change-matrix-cell ${cls}">${dotsHtml}</div>`;
+        }).join('');
+        return `
+          <div class="change-matrix-row">
+            <div class="change-matrix-room-label" title="${escapeHtml(room)}">${escapeHtml(room)}</div>
+            <div class="change-matrix-cells">${cellsHtml}</div>
+          </div>
+        `;
+      }).join('');
+
+      const ticksHtml = ticks.map(tick => {
+        const left = tick.idx * cellWidth + (cellWidth / 2);
+        const label = tick.day > 1 ? `D${tick.day} ${tick.label}` : tick.label;
+        return `<div class="change-matrix-time-tick" style="left: ${left}px;">${escapeHtml(label)}</div>`;
+      }).join('');
+
+      // Legend for prediction dots
+      const hasStrategies = Object.keys(strategyLookups).length > 0;
+      const dotLegend = hasStrategies ? `
+        <span><span class="change-matrix-legend-swatch" style="background:#20c997;border-radius:50%;width:8px;height:8px;display:inline-block;"></span> Correct pred</span>
+        <span><span class="change-matrix-legend-swatch" style="background:#0d6efd;border-radius:50%;width:8px;height:8px;display:inline-block;"></span> Wrong pred</span>
+        <span><span class="change-matrix-legend-swatch" style="background:#6c757d;border-radius:50%;width:8px;height:8px;display:inline-block;"></span> Baseline visit</span>
+      ` : '';
+
+      return `
+        <h6 class="mb-2">Change Matrix</h6>
+        <div class="muted mb-2">Red = major change, Yellow = minor change, Gray = no change. Scroll horizontally. Dots show where the robot visited and whether its prediction was correct.</div>
+        <div class="change-matrix-scroll">
+          <div class="change-matrix-container">
+            ${rowsHtml}
+            <div class="change-matrix-time-row" style="width: ${timestamps.length * cellWidth}px;">
+              ${ticksHtml}
+            </div>
+          </div>
+        </div>
+        <div class="change-matrix-legend">
+          <span><span class="change-matrix-legend-swatch" style="background:#dc3545;"></span> Major</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#ffc107;"></span> Minor</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#e9ecef;"></span> None</span>
+          ${dotLegend}
+        </div>
+      `;
+    }
+
+    function renderStrategyMatrix(matrix, trace, strategyName) {
+      if (!matrix || !matrix.timestamps || !matrix.changes) return '';
+      const timestamps = matrix.timestamps;
+      const rooms = matrix.rooms || [];
+      const changes = matrix.changes;
+      const cellWidth = 6;
+
+      const lookup = {};
+      (trace || []).forEach(step => {
+        if (!step || !step.room) return;
+        const colIdx = step.step_index !== undefined ? step.step_index : -1;
+        const key = colIdx >= 0 ? `${step.room}@${colIdx}` : `${step.room}@${step.time_str}`;
+        const gtChanged = step.gt_change_type === 'minor_change' || step.gt_change_type === 'major_change';
+        const hasVlm = step.vlm_detected_change !== undefined && step.vlm_detected_change !== null;
+        const vlmDetected = !!step.vlm_detected_change;
+        const isCorrect = hasVlm && ((vlmDetected && gtChanged) || (!vlmDetected && !gtChanged));
+        lookup[key] = { hasVlm, isCorrect, baseline: !hasVlm };
+      });
+
+      // Detect day boundaries (time goes backwards => new day)
+      let currentDay = 1;
+      let lastTime = '';
+      const ticks = [];
+      let lastLabel = '';
+      for (let i = 0; i < timestamps.length; i++) {
+        const t = timestamps[i];
+        if (lastTime && t < lastTime) {
+          currentDay++;
+          lastLabel = ''; // reset dedup for new day
+        }
+        lastTime = t;
+        if (t.endsWith(':00') || t.endsWith(':30')) {
+          if (t !== lastLabel) {
+            ticks.push({ idx: i, label: t, day: currentDay });
+            lastLabel = t;
+          }
+        }
+      }
+
+      const rowsHtml = rooms.map((room, rIdx) => {
+        const cellsHtml = changes[rIdx].map((ch, tIdx) => {
+          const cls = ch === 'major_change' ? 'major' : (ch === 'minor_change' ? 'minor' : 'no');
+          const keyIdx = `${room}@${tIdx}`;
+          const keyTime = `${room}@${timestamps[tIdx]}`;
+          const info = lookup[keyIdx] || lookup[keyTime];
+          let dotsHtml = '';
+          if (info) {
+            const dotCls = info.baseline ? 'baseline' : (info.isCorrect ? 'correct' : 'wrong');
+            const label = info.isCorrect ? '✓ correct' : (info.baseline ? 'baseline visit' : '✗ wrong');
+            dotsHtml += `<div class="pred-dot ${dotCls}" title="${escapeHtml(strategyName)}: ${label}"></div>`;
+          }
+          return `<div class="change-matrix-cell ${cls}">${dotsHtml}</div>`;
+        }).join('');
+        return `
+          <div class="change-matrix-row">
+            <div class="change-matrix-room-label" title="${escapeHtml(room)}">${escapeHtml(room)}</div>
+            <div class="change-matrix-cells">${cellsHtml}</div>
+          </div>
+        `;
+      }).join('');
+
+      const ticksHtml = ticks.map(tick => {
+        const left = tick.idx * cellWidth + (cellWidth / 2);
+        const label = tick.day > 1 ? `D${tick.day} ${tick.label}` : tick.label;
+        return `<div class="change-matrix-time-tick" style="left: ${left}px;">${escapeHtml(label)}</div>`;
+      }).join('');
+
+      return `
+        <div style="font-size:11px; font-weight:600; margin-bottom:4px;">Change Matrix — ${escapeHtml(strategyName)}</div>
+        <div class="muted mb-1" style="font-size:10px;">Red=major, Yellow=minor, Gray=none. Dots show where robot visited & prediction correctness.</div>
+        <div class="change-matrix-scroll">
+          <div class="change-matrix-container">
+            ${rowsHtml}
+            <div class="change-matrix-time-row" style="width: ${timestamps.length * cellWidth}px;">
+              ${ticksHtml}
+            </div>
+          </div>
+        </div>
+        <div class="change-matrix-legend" style="font-size:10px; margin-top:4px;">
+          <span><span class="change-matrix-legend-swatch" style="background:#dc3545;"></span> Major</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#ffc107;"></span> Minor</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#e9ecef;"></span> None</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#20c997;border-radius:50%;width:8px;height:8px;display:inline-block;"></span> Correct</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#0d6efd;border-radius:50%;width:8px;height:8px;display:inline-block;"></span> Wrong</span>
+          <span><span class="change-matrix-legend-swatch" style="background:#6c757d;border-radius:50%;width:8px;height:8px;display:inline-block;"></span> Baseline</span>
+        </div>
+      `;
+    }
+
+    window._ablations = [];
+
+    function addAblation() {
+      const detector = document.getElementById('ablationDetector').value;
+      const navigator = document.getElementById('ablationNavigator').value;
+      const strategyName = `ablation:${detector}:${navigator}`;
+      if (window._ablations.includes(strategyName)) return;
+      window._ablations.push(strategyName);
+      renderAblationList();
+    }
+
+    function removeAblation(strategyName) {
+      window._ablations = window._ablations.filter(s => s !== strategyName);
+      renderAblationList();
+    }
+
+    function renderAblationList() {
+      const container = document.getElementById('ablationList');
+      if (window._ablations.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = window._ablations.map(s => {
+        const parts = s.split(':');
+        const detLabel = parts[1].replace('agent_scene_change_', '').replace('_', ' ');
+        const navLabel = parts[2].replace('_', ' ');
+        const label = `${detLabel} + ${navLabel}`;
+        return `<span class="badge bg-info text-dark" style="cursor:pointer;" onclick="removeAblation('${s}')" title="Click to remove">${label} ×</span>`;
+      }).join('');
+    }
+
+    function getSelectedStrategies() {
+      const checks = document.querySelectorAll('.form-check-input:checked:not(.dataset-check)');
+      const main = Array.from(checks).map(c => c.value);
+      return [...main, ...window._ablations];
+    }
+
+    function renderConfusion(tp, tn, fp, fn, title = 'Scene Change') {
+      const total = tp + tn + fp + fn;
+      const acc = total > 0 ? ((tp + tn) / total * 100).toFixed(1) : '0.0';
+      return `
+        <div class="mt-2" style="font-size:11px; font-weight:600;">${title}</div>
+        <table class="table table-sm table-bordered mt-1" style="width:auto; font-size:12px;">
+          <tr><td class="confusion-cell bg-success text-white">TP ${tp}</td><td class="confusion-cell bg-danger text-white">FP ${fp}</td></tr>
+          <tr><td class="confusion-cell bg-warning">FN ${fn}</td><td class="confusion-cell bg-secondary text-white">TN ${tn}</td></tr>
+          <tr><td colspan="2" class="text-center text-muted" style="font-size:11px;">Accuracy: ${acc}%</td></tr>
+        </table>
+      `;
+    }
+
+    function renderVisits(visits) {
+      if (!visits || visits.length === 0) return '<div class="muted">No visits</div>';
+      return visits.slice(0, 30).map(v => `
+        <div class="sim-visit-card ${v.changes_observed > 0 ? 'hit' : 'miss'}">
+          <strong>#${v.visit}</strong> ${escapeHtml(v.room)}
+          <span class="float-end text-muted">${v.start}–${v.end}</span>
+          <div class="muted mt-1">Changes: ${v.changes_observed} | Dwell: ${Math.round(v.dwell_seconds / 60)}m</div>
+        </div>
+      `).join('');
+    }
+
+    // Unique ID counter for histogram toggles
+    let _histIdCounter = 0;
+
+    function renderLatencyHistogram(histogram, title = 'Detection Latency Histogram') {
+      if (!histogram || Object.keys(histogram).length === 0) {
+        return '<div class="muted mt-2">No detection-latency data.</div>';
+      }
+      // Sort keys: blind, absent, never, pending, T=0, T+1, T+2, ...
+      const keys = Object.keys(histogram).sort((a, b) => {
+        const order = (k) => {
+          if (k === 'blind') return -4;
+          if (k === 'absent') return -3;
+          if (k === 'never') return -2;
+          if (k === 'pending') return -1;
+          if (k === 'T=0') return 0;
+          return parseInt(k.replace('T+', ''), 10);
+        };
+        return order(a) - order(b);
+      });
+      const total = keys.reduce((sum, k) => sum + (histogram[k] || 0), 0);
+      if (total === 0) return '<div class="muted mt-2">No detection-latency data.</div>';
+
+      const histId = 'hist-' + (_histIdCounter++);
+      const initialLimit = 12;
+      const hasMore = keys.length > initialLimit;
+
+      const visibleKeys = keys.slice(0, initialLimit);
+      const hiddenKeys = keys.slice(initialLimit);
+
+      function barHtml(k) {
+        const count = histogram[k];
+        const pct = (count / total * 100).toFixed(1);
+        const isAbsent = k === 'absent';
+        const isBlind = k === 'blind';
+        const isPending = k === 'pending';
+        const isNever = k === 'never';
+        const color = isNever || isBlind ? '#dc3545' : (isAbsent || isPending ? '#fd7e14' : (k === 'T=0' ? '#198754' : '#0d6efd'));
+        return `
+          <div class="d-flex align-items-center mb-1" style="font-size:11px;">
+            <div style="width:55px; text-align:right; padding-right:6px; font-weight:600;">${k}</div>
+            <div style="flex:1; background:#f0f0f0; border-radius:3px; height:16px; overflow:hidden;">
+              <div style="width:${pct}%; background:${color}; height:100%; border-radius:3px; min-width:2px;"></div>
+            </div>
+            <div style="width:50px; padding-left:6px; white-space:nowrap;">${count} <span class="text-muted">(${pct}%)</span></div>
+          </div>
+        `;
+      }
+
+      const visibleBars = visibleKeys.map(barHtml).join('');
+      const hiddenBars = hiddenKeys.map(barHtml).join('');
+      const toggleBtn = hasMore ? `
+        <button type="button" class="btn btn-link p-0" style="font-size:11px;" onclick="
+          const container = document.getElementById('${histId}-extra');
+          const btn = this;
+          const expanded = btn.dataset.expanded === 'true';
+          container.style.display = expanded ? 'none' : 'block';
+          btn.dataset.expanded = expanded ? 'false' : 'true';
+          btn.textContent = expanded ? 'Show more' : 'Show less';
+        " data-expanded="false">Show more</button>
+      ` : '';
+
+      return `
+        <div class="mt-2">
+          <div style="font-size:11px; font-weight:600;">${title}</div>
+          <div>${visibleBars}</div>
+          <div id="${histId}-extra" style="display:none;">${hiddenBars}</div>
+          ${toggleBtn}
+        </div>
+      `;
+    }
+
+    function renderVisitOpportunityHistogram(histogram) {
+      if (!histogram || Object.keys(histogram).length === 0) {
+        return '<div class="muted mt-2">No visit-opportunity data.</div>';
+      }
+      const keys = Object.keys(histogram).sort((a, b) => {
+        if (a === 'absent') return 1;
+        if (b === 'absent') return -1;
+        if (a === 'blind') return 1;
+        if (b === 'blind') return -1;
+        const na = a === 'V=0' ? 0 : parseInt(a.replace('V+', ''), 10);
+        const nb = b === 'V=0' ? 0 : parseInt(b.replace('V+', ''), 10);
+        return na - nb;
+      });
+      const total = keys.reduce((sum, k) => sum + (histogram[k] || 0), 0);
+      if (total === 0) return '<div class="muted mt-2">No visit-opportunity data.</div>';
+      const bars = keys.map(k => {
+        const count = histogram[k];
+        const pct = (count / total * 100).toFixed(1);
+        const isAbsent = k === 'absent';
+        const isBlind = k === 'blind';
+        const color = isBlind ? '#dc3545' : (isAbsent ? '#fd7e14' : (k === 'V=0' ? '#198754' : '#0d6efd'));
+        return `
+          <div class="d-flex align-items-center mb-1" style="font-size:11px;">
+            <div style="width:55px; text-align:right; padding-right:6px; font-weight:600;">${k}</div>
+            <div style="flex:1; background:#f0f0f0; border-radius:3px; height:16px; overflow:hidden;">
+              <div style="width:${pct}%; background:${color}; height:100%; border-radius:3px; min-width:2px;"></div>
+            </div>
+            <div style="width:50px; padding-left:6px; white-space:nowrap;">${count} <span class="text-muted">(${pct}%)</span></div>
+          </div>
+        `;
+      }).join('');
+      return `<div class="mt-2"><div style="font-size:11px; font-weight:600;">Visit Opportunity Histogram</div>${bars}</div>`;
+    }
+
+    function renderPerRoomLatency(perRoomLatency) {
+      if (!perRoomLatency || Object.keys(perRoomLatency).length === 0) {
+        return '';
+      }
+      const rooms = Object.keys(perRoomLatency).sort();
+      const rows = rooms.map(room => {
+        const data = perRoomLatency[room];
+        if (!data || data.total_changes === 0) return '';
+        const avg = data.avg !== null && data.avg !== undefined ? parseFloat(data.avg).toFixed(1) : '—';
+        const med = data.median !== null && data.median !== undefined ? data.median : '—';
+        const max = data.max !== null && data.max !== undefined ? data.max : '—';
+        const detected = data.detected || 0;
+        const catchable = data.catchable || 0;
+        const absent = data.absent || 0;
+        const blind = data.blind || 0;
+        const detRate = data.detection_rate !== undefined && data.detection_rate !== null
+          ? (parseFloat(data.detection_rate) * 100).toFixed(1) + '%'
+          : '—';
+        return `
+          <tr>
+            <td>${escapeHtml(room)}</td>
+            <td>${detected}</td>
+            <td>${catchable}</td>
+            <td>${detRate}</td>
+            <td>${absent}</td>
+            <td>${blind}</td>
+            <td>${avg}</td>
+            <td>${med}</td>
+            <td>${max}</td>
+          </tr>
+        `;
+      }).filter(Boolean).join('');
+      if (!rows) return '';
+      return `
+        <div class="mt-2">
+          <div style="font-size:11px; font-weight:600;">Per-Room Latency</div>
+          <table class="table table-sm table-bordered mt-1" style="font-size:11px;">
+            <thead><tr><th>Room</th><th>Det</th><th>Catch</th><th>Rate</th><th>Absent</th><th>Blind</th><th>Avg Δ</th><th>Med Δ</th><th>Max Δ</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderCumulativeCurve(curve) {
+      if (!curve || Object.keys(curve).length === 0) {
+        return '';
+      }
+      const keys = Object.keys(curve).sort((a, b) => {
+        const na = parseInt(a.replace('≤T+', ''), 10);
+        const nb = parseInt(b.replace('≤T+', ''), 10);
+        return na - nb;
+      });
+      // Show every 2nd key to keep it compact, plus the last one
+      const displayKeys = keys.filter((_, i) => i === keys.length - 1 || i % 2 === 0);
+      const rows = displayKeys.map(k => {
+        const data = curve[k];
+        return `
+          <tr>
+            <td>${k}</td>
+            <td>${data.count}</td>
+            <td>${data.pct_of_detected.toFixed(1)}%</td>
+            <td>${data.pct_of_all.toFixed(1)}%</td>
+          </tr>
+        `;
+      }).join('');
+      return `
+        <div class="mt-2">
+          <div style="font-size:11px; font-weight:600;">Cumulative Detection Curve</div>
+          <table class="table table-sm table-bordered mt-1" style="font-size:11px;">
+            <thead><tr><th>Within</th><th>Count</th><th>% of detected</th><th>% of all changes</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function createLiveCard(strategy, totalSteps) {
+      const id = 'live-' + strategy.replace(/[^a-z0-9]/gi, '_');
+      const div = document.createElement('div');
+      div.className = 'sim-col';
+      div.id = id;
+      div.innerHTML = `
+        <div class="sim-col-header">${escapeHtml(strategy)}</div>
+        <div class="sim-col-body">
+          <div class="live-status">
+            <span id="${id}-status">Running step 0 / ${totalSteps}</span>
+            <span class="float-end" id="${id}-changes">Changes: 0</span>
+          </div>
+          <div class="progress-bar-container"><div class="progress-bar-fill" id="${id}-bar" style="width:0%"></div></div>
+          <div class="live-trace mt-2">
+            <table class="table table-sm">
+              <thead><tr>
+                <th>Time</th>
+                <th>Room</th>
+                <th>Action</th>
+                <th>GT Change</th>
+                <th>Detected</th>
+                <th>Change</th>
+                <th>Target</th>
+                <th>Tools</th>
+              </tr></thead>
+              <tbody id="${id}-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      return { id, div };
+    }
+
+    function renderToolCalls(toolCalls) {
+      if (!toolCalls || toolCalls.length === 0) {
+        return '<span class="text-muted">No tool calls — direct JSON response</span>';
+      }
+      return toolCalls.map(tc => {
+        const args = tc.arguments || tc.function?.arguments || '{}';
+        const result = tc.result || '{}';
+        return `
+          <div class="detail-tool-call mb-2">
+            <div class="fw-semibold small" style="color:#4a148c;">🔧 ${escapeHtml(tc.tool || tc.function?.name || 'unknown')}</div>
+            <div class="small text-muted">Args: <code>${escapeHtml(typeof args === 'string' ? args : JSON.stringify(args))}</code></div>
+            <div class="small text-muted">Result: <code>${escapeHtml(typeof result === 'string' ? result : JSON.stringify(result, null, 2))}</code></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderStepDetail(step) {
+      if (!step) return '';
+      const interactions = (step.interactions || []).map(i =>
+        `<span class="inter-tuple">${escapeHtml(i.subject || '?')} + ${escapeHtml(i.action || '?')} + ${escapeHtml(i.target || '?')}</span>`
+      ).join(' ') || '<span class="text-muted">None</span>';
+      const interCaps = (step.interactions || []).map(i =>
+        `<div class="inter-caption">${escapeHtml(i.caption || '')}</div>`
+      ).join('') || '<span class="text-muted">None</span>';
+
+      // Correctness badge for VLM predictions
+      const gtChanged = step.gt_change_type === 'minor_change' || step.gt_change_type === 'major_change';
+      const hasVlmPred = step.vlm_detected_change !== undefined && step.vlm_detected_change !== null;
+      const vlmDetected = !!step.vlm_detected_change;
+      const isCorrect = hasVlmPred && ((vlmDetected && gtChanged) || (!vlmDetected && !gtChanged));
+      const correctBadge = hasVlmPred
+        ? (isCorrect
+            ? '<span class="badge bg-success">✓ Correct</span>'
+            : '<span class="badge bg-danger">✗ Wrong</span>')
+        : '<span class="badge bg-secondary">Baseline (no VLM)</span>';
+      const fpfnLabel = hasVlmPred && !isCorrect
+        ? (vlmDetected ? '<span class="badge bg-warning text-dark ms-1">False Positive</span>' : '<span class="badge bg-warning text-dark ms-1">False Negative</span>')
+        : '';
+
+      const errorBanner = step.error
+        ? `<div class="alert alert-danger py-1 px-2 mb-2 small"><strong>⚠️ VLM Error:</strong> ${escapeHtml(step.error)}</div>`
+        : '';
+      return `
+        ${errorBanner}
+        <div class="detail-block">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="fw-semibold small">VLM Prediction vs Ground Truth</span>
+            ${correctBadge}${fpfnLabel}
+          </div>
+          <div class="d-flex gap-3 small">
+            <div><span class="text-muted">GT Change:</span> <strong>${escapeHtml(step.gt_change_type?.replace('_', ' ') || '-')}</strong></div>
+            <div><span class="text-muted">VLM Detected:</span> <strong>${vlmDetected ? 'Yes' : 'No'}</strong></div>
+            <div><span class="text-muted">Change:</span> <strong>${escapeHtml(step.vlm_change || '-')}</strong></div>
+          </div>
+        </div>
+        <div class="detail-block">
+          <div class="detail-label">System Prompt</div>
+          <pre class="detail-pre">${escapeHtml(truncateText(step.system_prompt, 4000) || '[default system prompt]')}</pre>
+        </div>
+        <div class="detail-block">
+          <div class="detail-label">Prompt sent to VLM</div>
+          <pre class="detail-pre">${escapeHtml(truncateText(step.prompt, 6000) || '[no prompt — baseline strategy]')}</pre>
+        </div>
+        <div class="detail-block">
+          <div class="detail-label">VLM Raw Response</div>
+          <pre class="detail-pre">${escapeHtml(step.raw_response || '[no response — baseline strategy]')}</pre>
+        </div>
+        <div class="detail-block">
+          <div class="detail-label">Tool Calls</div>
+          ${renderToolCalls(step.tool_calls)}
+        </div>
+        <div class="detail-block">
+          <div class="detail-label">Ground Truth Scene</div>
+          <div class="detail-scene">${escapeHtml(step.scene_text || '')}</div>
+          <div class="detail-gt mt-1">
+            <strong>Change:</strong> ${escapeHtml(step.gt_change_type?.replace('_', ' ') || '-')} |
+            <strong>Activity changed:</strong> ${step.gt_activity_changed ? 'Yes' : 'No'} |
+            <strong>People:</strong> ${(step.people_present || []).join(', ') || '-'} |
+            <strong>Objects:</strong> ${(step.objects_present || []).join(', ') || '-'}
+          </div>
+        </div>
+        <div class="detail-block">
+          <div class="detail-label">Interactions</div>
+          <div>${interactions}</div>
+          <div class="mt-1">${interCaps}</div>
+        </div>
+      `;
+    }
+
+    window.showStepPopup = function(step, strategy) {
+      const title = document.getElementById('stepDetailTitle');
+      const body = document.getElementById('stepDetailBody');
+      if (title) title.textContent = `${escapeHtml(strategy)} — ${escapeHtml(step.time_str)} @ ${escapeHtml(step.room)}`;
+      if (body) body.innerHTML = renderStepDetail(step);
+      if (stepDetailModal) stepDetailModal.show();
+    };
+
+    function appendStepRow(tbodyId, step, strategy) {
+      const tbody = document.getElementById(tbodyId);
+      if (!tbody || !step) return;
+      const actionCls = step.action === 'move' ? 'step-move' : 'step-stay';
+      const hasVlmPred = step.vlm_detected_change !== undefined && step.vlm_detected_change !== null;
+      const detected = step.vlm_detected_change ? 'Yes' : 'No';
+      const detCls = hasVlmPred ? (step.vlm_detected_change ? 'step-hit' : 'step-miss') : 'step-stay';
+      const gtChanged = step.gt_change_type === 'minor_change' || step.gt_change_type === 'major_change';
+      const vlmDetected = !!step.vlm_detected_change;
+      const isCorrect = hasVlmPred && ((vlmDetected && gtChanged) || (!vlmDetected && !gtChanged));
+      let rowBorder = '';
+      if (step.error) {
+        rowBorder = 'border-left: 3px solid #842029; background: #fdf2f2;';
+      } else if (hasVlmPred) {
+        rowBorder = isCorrect ? 'border-left: 3px solid #20c997;' : 'border-left: 3px solid #dc3545;';
+      }
+      const tr = document.createElement('tr');
+      tr.className = 'row-clickable';
+      tr.style.cssText = rowBorder;
+      tr.onclick = () => window.showStepPopup(step, strategy);
+      const hasError = !!step.error;
+      const toolCount = (step.tool_calls || []).length;
+      const toolBadge = hasError
+        ? `<span class="step-badge step-error" title="${escapeHtml(step.error)}">⚠️ ERR</span>`
+        : (toolCount > 0
+            ? `<span class="step-badge step-tool" title="${toolCount} tool call(s)">🔧 ${toolCount}</span>`
+            : '—');
+      tr.innerHTML = `
+        <td>${escapeHtml(step.time_str)}</td>
+        <td>${escapeHtml(step.room)}</td>
+        <td><span class="step-badge ${actionCls}">${escapeHtml(step.action)}</span></td>
+        <td>${escapeHtml(step.gt_change_type?.replace('_', ' ') || '-')}</td>
+        <td><span class="step-badge ${detCls}">${hasVlmPred ? detected : '—'}</span></td>
+        <td>${escapeHtml(step.vlm_change || '-')}</td>
+        <td>${escapeHtml(step.target_room || '-')}</td>
+        <td>${toolBadge}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function renderLiveMetricCard(strategy, result, status) {
+      const r = result || {};
+      const actAcc = r.activity_change_accuracy !== undefined ? (r.activity_change_accuracy * 100).toFixed(1) + '%' : '—';
+      const hasConf = (r.scene_change_tp + r.scene_change_tn + r.scene_change_fp + r.scene_change_fn) > 0;
+      const hasObs = (r.observed_changes || 0) > 0;
+      const total = r.scene_change_tp + r.scene_change_tn + r.scene_change_fp + r.scene_change_fn;
+      const acc = total > 0 ? ((r.scene_change_tp + r.scene_change_tn) / total * 100).toFixed(1) : '0.0';
+
+      const confusionMini = hasConf ? `
+        <table class="live-metric-mini-table table table-sm table-bordered mb-0">
+          <tr><td class="bg-success text-white" style="font-size:9px;">TP ${r.scene_change_tp}</td><td class="bg-danger text-white" style="font-size:9px;">FP ${r.scene_change_fp}</td></tr>
+          <tr><td class="bg-warning" style="font-size:9px;">FN ${r.scene_change_fn}</td><td class="bg-secondary text-white" style="font-size:9px;">TN ${r.scene_change_tn}</td></tr>
+          <tr><td colspan="2" class="text-muted" style="font-size:9px;">Acc ${acc}%</td></tr>
+        </table>
+      ` : (hasObs
+        ? `<div class="muted" style="font-size:10px;margin-top:6px;">Observed ${r.observed_changes} changes</div>`
+        : '<div class="muted" style="font-size:10px;margin-top:6px;">Baseline — no detection</div>');
+
+      const statusBadge = status === 'complete'
+        ? '<span class="badge bg-success" style="font-size:9px;">✓</span>'
+        : (status === 'error'
+            ? '<span class="badge bg-danger" style="font-size:9px;">✗</span>'
+            : '<span class="badge bg-primary" style="font-size:9px;">⋯</span>');
+
+      return `
+        <div class="live-metric-card ${status}" id="live-metric-${strategy.replace(/[^a-z0-9]/gi, '_')}">
+          <div class="live-metric-title">${statusBadge} ${escapeHtml(strategy)}</div>
+          <div class="live-metric-row"><span class="text-muted">Recall</span><span class="live-metric-value">${(r.change_recall * 100).toFixed(1)}%</span></div>
+          <div class="live-metric-row"><span class="text-muted">Chg Acc</span><span class="live-metric-value">${(r.scene_change_accuracy * 100).toFixed(1)}%</span></div>
+          <div class="live-metric-row"><span class="text-muted">No-Chg Acc</span><span class="live-metric-value">${r.no_change_accuracy !== undefined ? (r.no_change_accuracy * 100).toFixed(1) + '%' : '—'}</span></div>
+          <div class="live-metric-row"><span class="text-muted">Chg Det Acc</span><span class="live-metric-value">${r.change_accuracy !== undefined ? (r.change_accuracy * 100).toFixed(1) + '%' : '—'}</span></div>
+          <div class="live-metric-row"><span class="text-muted">Act Acc</span><span class="live-metric-value">${actAcc}</span></div>
+          <div class="live-metric-row"><span class="text-muted">Nav Prec</span><span class="live-metric-value">${(r.navigation_precision * 100).toFixed(1)}%</span></div>
+          <div class="live-metric-row" title="Path max / Theoretical max"><span class="text-muted">Path / Theo</span><span class="live-metric-value">${r.path_max_changes !== undefined ? r.path_max_changes : '—'} / ${r.theoretical_max_changes !== undefined ? r.theoretical_max_changes : '—'}</span></div>
+          <div class="live-metric-row" title="Detection efficiency = observed / path max"><span class="text-muted">Det Eff</span><span class="live-metric-value">${r.detection_efficiency !== undefined ? (r.detection_efficiency * 100).toFixed(1) + '%' : '—'}</span></div>
+          <div class="live-metric-row" title="Navigation efficiency = path max / theoretical max"><span class="text-muted">Nav Eff</span><span class="live-metric-value">${r.navigation_efficiency !== undefined ? (r.navigation_efficiency * 100).toFixed(1) + '%' : '—'}</span></div>
+          <div class="live-metric-row" title="Normalized recall = recall / theoretical max"><span class="text-muted">Norm Rec</span><span class="live-metric-value">${r.normalized_recall !== undefined ? (r.normalized_recall * 100).toFixed(1) + '%' : '—'}</span></div>
+          <div class="live-metric-row"><span class="text-muted">Visits</span><span class="live-metric-value">${r.total_visits || 0}</span></div>
+          <div class="live-metric-row"><span class="text-muted">VLM Calls</span><span class="live-metric-value">${r.vlm_calls_made || 0}</span></div>
+          <div class="live-metric-row" title="Event timesteps caught / total event timesteps (max 1 per timestep)"><span class="text-muted">Events</span><span class="live-metric-value">${r.event_timesteps_caught !== undefined ? r.event_timesteps_caught : '—'} / ${r.total_event_timesteps !== undefined ? r.total_event_timesteps : '—'}</span></div>
+          ${confusionMini}
+        </div>
+      `;
+    }
+
+    function updateLiveMetricsPanel(results, dataset) {
+      const panelId = dataset ? 'liveMetricsPanel-' + dataset : 'liveMetricsPanel';
+      const panel = document.getElementById(panelId);
+      if (!panel) return;
+      const strategyNames = Object.keys(results);
+      if (strategyNames.length === 0) return;
+      const cardsHtml = strategyNames.map(s => {
+        const r = results[s];
+        const status = r._status || 'complete';
+        return renderLiveMetricCard(s, r, status);
+      }).join('');
+
+      // Build latency histogram cards
+      const latencyCards = strategyNames.map(s => {
+        const r = results[s];
+        let histogram = null;
+        let condHistogram = null;
+        let visitHistogram = null;
+        let perRoom = null;
+        const hasLive = window._liveLatency && window._liveLatency[s];
+        const hasBackendHist = r.detection_latency_histogram && Object.keys(r.detection_latency_histogram).length > 0;
+        if (hasLive && r._status !== 'complete') {
+          histogram = window._liveLatency[s].histogram;
+          condHistogram = window._liveLatency[s].conditionalHistogram;
+          visitHistogram = window._liveLatency[s].visitOppHistogram;
+          perRoom = window._liveLatency[s].perRoomLatency;
+        } else if (hasBackendHist) {
+          histogram = r.detection_latency_histogram;
+          condHistogram = r.conditional_latency_histogram;
+          visitHistogram = r.visit_opportunity_histogram;
+          perRoom = r.per_room_latency;
+        } else if (hasLive) {
+          // Fallback: use live data if backend histogram is missing/empty
+          histogram = window._liveLatency[s].histogram;
+          condHistogram = window._liveLatency[s].conditionalHistogram;
+          visitHistogram = window._liveLatency[s].visitOppHistogram;
+          perRoom = window._liveLatency[s].perRoomLatency;
+        }
+        if (!histogram || Object.keys(histogram).length === 0) {
+          console.warn(`[updateLiveMetricsPanel] Empty histogram for ${s}, status=${r._status}, hasBackend=${hasBackendHist}, hasLive=${hasLive}`);
+          return '';
+        }
+        return `
+          <div class="live-metric-card ${r._status || 'complete'}">
+            <div class="live-metric-title">${escapeHtml(s)}</div>
+            ${renderLatencyHistogram(histogram)}
+            ${condHistogram && Object.keys(condHistogram).length > 0 ? renderLatencyHistogram(condHistogram, 'Conditional (Detected Only)') : ''}
+            ${visitHistogram && Object.keys(visitHistogram).length > 0 ? renderVisitOpportunityHistogram(visitHistogram) : ''}
+            ${perRoom && Object.keys(perRoom).length > 0 ? renderPerRoomLatency(perRoom) : ''}
+          </div>
+        `;
+      }).filter(Boolean).join('');
+
+      panel.style.display = 'block';
+      panel.innerHTML = `
+        ${latencyCards ? `<h6 class="mb-2">Detection Latency</h6><div class="live-metrics-grid">${latencyCards}</div>` : ''}
+        <h6 class="mb-2 mt-3">Live Metrics</h6>
+        <div class="live-metrics-grid">${cardsHtml}</div>
+      `;
+    }
+
+    function updateRunningMetrics(strategy, step, running) {
+      if (!step || !step.gt_change_type) return;
+      const gtChanged = step.gt_change_type === 'minor_change' || step.gt_change_type === 'major_change';
+      const hasVlm = step.vlm_detected_change !== undefined && step.vlm_detected_change !== null;
+      const vlmDetected = !!step.vlm_detected_change;
+      running.total += 1;
+      if (gtChanged) {
+        running.observed_changes += 1;
+      }
+      if (hasVlm) {
+        if (vlmDetected && gtChanged) running.tp += 1;
+        else if (!vlmDetected && !gtChanged) running.tn += 1;
+        else if (vlmDetected && !gtChanged) running.fp += 1;
+        else running.fn += 1;
+      }
+    }
+
+    function computeLiveLatency(trace, gtMatrix) {
+      if (!gtMatrix || !trace || trace.length === 0) return null;
+      const rooms = gtMatrix.rooms || [];
+      const changes = gtMatrix.changes || [];
+      const gtChanges = [];
+      for (let rIdx = 0; rIdx < rooms.length; rIdx++) {
+        const room = rooms[rIdx];
+        const roomChanges = changes[rIdx] || [];
+        for (let tIdx = 0; tIdx < roomChanges.length; tIdx++) {
+          const ch = roomChanges[tIdx];
+          if (ch === 'minor_change' || ch === 'major_change') {
+            gtChanges.push({room, colIdx: tIdx, changeType: ch});
+          }
+        }
+      }
+      const stepsByRoom = {};
+      for (const step of trace) {
+        if (!step || !step.room) continue;
+        if (!stepsByRoom[step.room]) stepsByRoom[step.room] = [];
+        stepsByRoom[step.room].push(step);
+      }
+      for (const room in stepsByRoom) {
+        stepsByRoom[room].sort((a, b) => (a.step_index || 0) - (b.step_index || 0));
+      }
+      const hasVlm = trace.some(s => s.vlm_detected_change !== undefined && s.vlm_detected_change !== null);
+      function isDetected(step) {
+        if (hasVlm) return !!step.vlm_detected_change;
+        return step.gt_change_type === 'minor_change' || step.gt_change_type === 'major_change';
+      }
+      const histogram = {};
+      const conditionalHistogram = {};
+      const visitOppHistogram = {};
+      const perRoom = {};
+      const latencies = [];
+      const visitOpps = [];
+      let catchableCount = 0;
+      let absentCount = 0;
+      let blindCount = 0;
+      for (const room of rooms) {
+        perRoom[room] = {latencies: [], visitOpps: [], total: 0, catchable: 0, absent: 0, blind: 0};
+      }
+      for (const gt of gtChanges) {
+        const roomSteps = stepsByRoom[gt.room] || [];
+        const visitsAfter = roomSteps.filter(s => (s.step_index || 0) >= gt.colIdx);
+        const wasVisited = visitsAfter.length > 0;
+        let detected = false;
+        let latency = null;
+        let visitIdx = null;
+        for (let i = 0; i < visitsAfter.length; i++) {
+          const step = visitsAfter[i];
+          if (isDetected(step)) {
+            latency = (step.step_index || 0) - gt.colIdx;
+            visitIdx = i;
+            detected = true;
+            break;
+          }
+        }
+        perRoom[gt.room].total++;
+        if (detected) {
+          const tKey = latency === 0 ? 'T=0' : `T+${latency}`;
+          const vKey = visitIdx === 0 ? 'V=0' : `V+${visitIdx}`;
+          histogram[tKey] = (histogram[tKey] || 0) + 1;
+          conditionalHistogram[tKey] = (conditionalHistogram[tKey] || 0) + 1;
+          visitOppHistogram[vKey] = (visitOppHistogram[vKey] || 0) + 1;
+          latencies.push(latency);
+          visitOpps.push(visitIdx);
+          perRoom[gt.room].latencies.push(latency);
+          perRoom[gt.room].visitOpps.push(visitIdx);
+          catchableCount++;
+          perRoom[gt.room].catchable++;
+        } else if (wasVisited) {
+          blindCount++;
+          perRoom[gt.room].blind++;
+          catchableCount++;
+          perRoom[gt.room].catchable++;
+          histogram['blind'] = (histogram['blind'] || 0) + 1;
+          visitOppHistogram['blind'] = (visitOppHistogram['blind'] || 0) + 1;
+        } else {
+          absentCount++;
+          perRoom[gt.room].absent++;
+          histogram['absent'] = (histogram['absent'] || 0) + 1;
+          visitOppHistogram['absent'] = (visitOppHistogram['absent'] || 0) + 1;
+        }
+      }
+      const cumulative = {};
+      if (latencies.length > 0) {
+        const maxLat = Math.max(...latencies);
+        const sortedLat = [...latencies].sort((a, b) => a - b);
+        const totalDetected = latencies.length;
+        const totalAll = gtChanges.length;
+        for (let n = 0; n <= maxLat; n++) {
+          const count = sortedLat.filter(l => l <= n).length;
+          cumulative[`≤T+${n}`] = {
+            count,
+            pct_of_detected: totalDetected > 0 ? (count / totalDetected * 100).toFixed(1) : 0,
+            pct_of_all: totalAll > 0 ? (count / totalAll * 100).toFixed(1) : 0,
+          };
+        }
+      }
+      const perRoomLatency = {};
+      for (const room of rooms) {
+        const data = perRoom[room];
+        if (data.total === 0) continue;
+        const roomHist = {};
+        for (const lat of data.latencies) {
+          const key = lat === 0 ? 'T=0' : `T+${lat}`;
+          roomHist[key] = (roomHist[key] || 0) + 1;
+        }
+        if (data.absent > 0) roomHist['absent'] = data.absent;
+        if (data.blind > 0) roomHist['blind'] = data.blind;
+        perRoomLatency[room] = {
+          histogram: roomHist,
+          avg: data.latencies.length > 0 ? (data.latencies.reduce((a, b) => a + b, 0) / data.latencies.length).toFixed(2) : null,
+          median: data.latencies.length > 0 ? data.latencies[Math.floor(data.latencies.length / 2)] : null,
+          max: data.latencies.length > 0 ? Math.max(...data.latencies) : null,
+          total_changes: data.total,
+          catchable: data.catchable,
+          detected: data.latencies.length,
+          absent: data.absent,
+          blind: data.blind,
+          detection_rate: data.catchable > 0 ? (data.latencies.length / data.catchable).toFixed(4) : '0.0000',
+        };
+      }
+      return {
+        histogram,
+        conditionalHistogram,
+        visitOppHistogram,
+        perRoomLatency,
+        cumulative,
+        totalChanges: gtChanges.length,
+        totalDetected: latencies.length,
+        catchable: catchableCount,
+        absent: absentCount,
+        blind: blindCount,
+        detectedAmongCatchable: catchableCount > 0 ? (latencies.length / catchableCount) : 0,
+      };
+    }
+
+    function buildRunningResult(strategy, running, totalSteps, stepsProcessed, totalChanges) {
+      const total = running.tp + running.tn + running.fp + running.fn;
+      const acc = total > 0 ? (running.tp + running.tn) / total : 0;
+      const prec = (running.tp + running.fp) > 0 ? running.tp / (running.tp + running.fp) : 0;
+      const rec = (running.tp + running.fn) > 0 ? running.tp / (running.tp + running.fn) : 0;
+      const hasVlmData = total > 0;
+      const fallbackRec = totalChanges > 0 ? running.observed_changes / totalChanges : 0;
+      return {
+        strategy,
+        change_recall: hasVlmData ? rec : fallbackRec,
+        change_precision: prec,
+        scene_change_accuracy: hasVlmData ? acc : 0,
+        scene_change_tp: running.tp,
+        scene_change_tn: running.tn,
+        scene_change_fp: running.fp,
+        scene_change_fn: running.fn,
+        total_visits: running.visits,
+        vlm_calls_made: running.vlm_calls,
+        navigation_precision: 0,
+        activity_change_accuracy: 0,
+        observed_changes: running.observed_changes,
+        _status: 'running',
+        _progress: `${stepsProcessed}/${totalSteps}`,
+      };
+    }
+
+    function runSingleDatasetStream(dataset, strategies, seed, out, noTools) {
+      return new Promise((resolve, reject) => {
+        const results = {};
+        const liveCards = {};
+        const runningMetrics = {};
+        window._stepTraces = {};
+        let totalSteps = 183;
+
+        strategies.forEach(s => {
+          runningMetrics[s] = { tp: 0, tn: 0, fp: 0, fn: 0, total: 0, visits: 0, vlm_calls: 0, crossMisses: 0, observed_changes: 0, last_room: null };
+        });
+        window._liveLatency = {};
+        const errorLog = [];
+
+        // Error log panel
+        const errorPanel = document.createElement('div');
+        errorPanel.id = 'errorPanel-' + dataset;
+        errorPanel.className = 'mb-3';
+        errorPanel.style.display = 'none';
+
+        function appendError(strategy, message, traceback) {
+          errorLog.push({ strategy, message, traceback });
+          errorPanel.style.display = 'block';
+          const entry = document.createElement('div');
+          entry.className = 'alert alert-danger py-2 px-3 mb-2';
+          entry.style.fontSize = '13px';
+          entry.innerHTML = `<strong>${escapeHtml(strategy)}</strong>: <pre style="margin:4px 0 0;white-space:pre-wrap;font-size:12px;background:#f8d7da;padding:6px;border-radius:4px;">${escapeHtml(message)}</pre>`;
+          if (traceback) {
+            const tbBtn = document.createElement('button');
+            tbBtn.className = 'btn btn-sm btn-outline-dark mt-1';
+            tbBtn.textContent = 'Show traceback';
+            tbBtn.onclick = () => {
+              const tbPre = document.createElement('pre');
+              tbPre.style.cssText = 'margin:4px 0 0;white-space:pre-wrap;font-size:11px;background:#f8d7da;padding:6px;border-radius:4px;max-height:300px;overflow:auto;';
+              tbPre.textContent = traceback;
+              entry.appendChild(tbPre);
+              tbBtn.remove();
+            };
+            entry.appendChild(tbBtn);
+          }
+          errorPanel.appendChild(entry);
+        }
+
+        // Dataset heading
+        const dsHeading = document.createElement('h4');
+        dsHeading.className = 'mt-4 mb-2';
+        dsHeading.style.cssText = 'font-size:16px; font-weight:700; text-transform:uppercase; color:#495057; border-bottom:2px solid #dee2e6; padding-bottom:4px;';
+        dsHeading.textContent = `Dataset: ${dataset}`;
+        out.appendChild(dsHeading);
+
+        // Create live metrics panel
+        const metricsPanel = document.createElement('div');
+        metricsPanel.id = 'liveMetricsPanel-' + dataset;
+        metricsPanel.className = 'live-metrics-panel';
+        metricsPanel.innerHTML = '<h6 class="mb-2">Live Metrics</h6><div class="live-metrics-grid">' + strategies.map(s =>
+          renderLiveMetricCard(s, {}, 'running')
+        ).join('') + '</div>';
+
+        const grid = document.createElement('div');
+        grid.className = 'sim-grid';
+        strategies.forEach(s => {
+          const { id, div } = createLiveCard(s, totalSteps);
+          liveCards[s] = id;
+          grid.appendChild(div);
+        });
+        out.appendChild(errorPanel);
+        out.appendChild(metricsPanel);
+        out.appendChild(grid);
+
+        let url = '/api/scene-change-strategy/stream?strategies=' + encodeURIComponent(strategies.join(',')) + '&seed=' + seed + '&dataset=' + encodeURIComponent(dataset);
+        if (noTools) {
+          url += '&no_tools=1';
+        }
+        const es = new EventSource(url);
+
+        es.addEventListener('step', (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            const sid = liveCards[data.strategy];
+            if (!sid) {
+              console.warn('Step event for unknown strategy:', data.strategy);
+              return;
+            }
+            totalSteps = data.total_steps || totalSteps;
+            const pct = Math.min(100, (data.steps_processed / totalSteps) * 100);
+            const bar = document.getElementById(sid + '-bar');
+            const status = document.getElementById(sid + '-status');
+            const changes = document.getElementById(sid + '-changes');
+            if (bar) bar.style.width = pct + '%';
+            if (status) status.textContent = `Running step ${data.steps_processed} / ${totalSteps}`;
+            if (changes) changes.textContent = `Changes: ${data.changes_so_far}`;
+
+            const tbody = document.getElementById(sid + '-tbody');
+            if (!tbody) {
+              console.warn('Missing tbody for strategy:', data.strategy, 'sid:', sid);
+            } else if (data.step) {
+              try {
+                appendStepRow(sid + '-tbody', data.step, data.strategy);
+              } catch (rowErr) {
+                console.error('appendStepRow failed for', data.strategy, rowErr);
+              }
+            }
+
+            if (!window._stepTraces[data.strategy]) window._stepTraces[data.strategy] = [];
+            if (data.step) {
+              data.step.step_index = data.steps_processed - 1;
+              window._stepTraces[data.strategy].push(data.step);
+            }
+
+            const rm = runningMetrics[data.strategy];
+            updateRunningMetrics(data.strategy, data.step, rm);
+            if (data.step && data.step.decision) rm.vlm_calls += 1;
+            if (data.current_room && data.current_room !== rm.last_room) {
+              rm.visits += 1;
+              rm.last_room = data.current_room;
+            }
+
+            if (data.steps_processed % 5 === 0 || data.steps_processed === totalSteps) {
+              const partialResults = {};
+              strategies.forEach(s => {
+                partialResults[s] = buildRunningResult(s, runningMetrics[s], totalSteps, data.steps_processed, 0);
+              });
+              updateLiveMetricsPanel(partialResults, dataset);
+
+              if (window._gtMatrix) {
+                const trace = window._stepTraces[data.strategy] || [];
+                const liveLat = computeLiveLatency(trace, window._gtMatrix);
+                if (liveLat) {
+                  window._liveLatency[data.strategy] = liveLat;
+                }
+              }
+            }
+          } catch (handlerErr) {
+            console.error('Step event handler error:', handlerErr);
+          }
+        });
+
+        es.addEventListener('complete', (e) => {
+          const data = JSON.parse(e.data);
+          results[data.strategy] = data.result;
+          results[data.strategy]._status = 'complete';
+          results[data.strategy]._dataset = dataset;
+          updateLiveMetricsPanel(results, dataset);
+          const sid = liveCards[data.strategy];
+          if (sid) {
+            const status = document.getElementById(sid + '-status');
+            if (status) status.textContent = 'Complete';
+            const bar = document.getElementById(sid + '-bar');
+            if (bar) { bar.style.width = '100%'; bar.style.background = '#198754'; }
+          }
+        });
+
+        es.addEventListener('error', (e) => {
+          const data = JSON.parse(e.data);
+          const isTimeout = data.error_type === 'timeout';
+          const errLabel = isTimeout ? 'TIMEOUT' : 'ERROR';
+          if (results[data.strategy]) {
+            results[data.strategy]._status = 'error';
+            results[data.strategy]._error_type = data.error_type;
+            results[data.strategy]._error_msg = data.error;
+            results[data.strategy]._traceback = data.traceback;
+            results[data.strategy]._dataset = dataset;
+          } else {
+            results[data.strategy] = {
+              _status: 'error',
+              _error_type: data.error_type,
+              _error_msg: data.error,
+              _traceback: data.traceback,
+              _dataset: dataset,
+              strategy: data.strategy,
+              scene_change_tp: 0, scene_change_tn: 0, scene_change_fp: 0, scene_change_fn: 0,
+              scene_change_accuracy: 0, change_recall: 0, change_precision: 0, change_f1: 0,
+              activity_change_tp: 0, activity_change_tn: 0, activity_change_fp: 0, activity_change_fn: 0,
+              activity_change_accuracy: 0,
+              total_changes: 0, total_major_changes: 0, observed_changes: 0,
+              total_visits: 0, visits_with_changes: 0, hit_rate: 0,
+              total_moves: 0, navigation_to_changed_room: 0, navigation_precision: 0,
+              exploration_coverage: 0, vlm_calls_made: 0, elapsed_seconds: 0,
+              cross_room_misses: 0, cross_room_miss_rate: 0,
+              total_event_timesteps: 0, event_timesteps_caught: 0, event_timestep_rate: 0,
+              avg_detection_latency_minutes: 0, median_detection_latency_minutes: 0,
+              max_detection_latency_minutes: 0, changes_never_detected: 0,
+              latency_histogram: {}, visits: [],
+              detection_latency_histogram: {}, avg_detection_latency_steps: 0,
+              median_detection_latency_steps: 0, max_detection_latency_steps: 0,
+              changes_detected_immediately: 0, per_room_latency: {},
+              cumulative_detection_curve: {}
+            };
+          }
+          appendError(data.strategy, data.error, data.traceback);
+          updateLiveMetricsPanel(results, dataset);
+          const sid = liveCards[data.strategy];
+          if (sid) {
+            const status = document.getElementById(sid + '-status');
+            if (status) status.innerHTML = `<span class="text-danger"><strong>${errLabel}:</strong> ${escapeHtml(data.error)}</span>`;
+            const bar = document.getElementById(sid + '-bar');
+            if (bar) { bar.style.width = '100%'; bar.style.background = '#dc3545'; }
+          }
+        });
+
+        es.addEventListener('done', (e) => {
+          const data = JSON.parse(e.data);
+          es.close();
+          renderFinalResults(out, results, data.saved_to);
+          resolve(results);
+        });
+
+        es.onerror = () => {
+          es.close();
+          if (Object.keys(results).length === 0) {
+            out.innerHTML += '<div class="alert alert-danger">Stream connection failed for ' + escapeHtml(dataset) + '. Check that the backend is running.</div>';
+          } else {
+            renderFinalResults(out, results);
+          }
+          resolve(results);
+        };
+      });
+    }
+
+    async function runExperiment() {
+      const out = document.getElementById('experimentOutput');
+      const btn = document.getElementById('runBtn');
+      const strategies = getSelectedStrategies();
+      if (strategies.length === 0) {
+        out.innerHTML = '<div class="alert alert-warning">Select at least one strategy.</div>';
+        return;
+      }
+      const seed = parseInt(document.getElementById('seedInput').value || '42', 10);
+      const datasetEls = document.querySelectorAll('.dataset-check:checked');
+      const datasets = Array.from(datasetEls).map(c => c.value);
+      if (datasets.length === 0) {
+        out.innerHTML = '<div class="alert alert-warning">Select at least one dataset.</div>';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Running…';
+      out.innerHTML = '<div class="muted mb-2">Connecting to stream…</div>';
+
+      // Pre-load GT matrix once using the first dataset (for live latency charts)
+      window._gtMatrix = await fetchGtMatrix(datasets[0]);
+
+      const noTools = document.getElementById('noToolsCheck').checked;
+
+      // Run all datasets in parallel so the user sees cards for all of them immediately
+      const streamPromises = datasets.map(dataset => runSingleDatasetStream(dataset, strategies, seed, out, noTools));
+      await Promise.all(streamPromises);
+
+      btn.disabled = false;
+      btn.textContent = 'Run Experiment';
+      refreshSavedResults();
+    }
+
+    async function renderFinalResults(container, results, savedTo) {
+      const strategyNames = Object.keys(results);
+      if (strategyNames.length === 0) return;
+
+      // ---- Compute best possible values among selected strategies ----
+      const theoreticalMax = results[strategyNames[0]]?.theoretical_max_recall || 0;
+      const best = {
+        change_recall: 0,
+        navigation_precision: 0,
+        scene_change_accuracy: 0,
+        activity_change_accuracy: 0,
+        event_timestep_rate: 0,
+        cross_room_miss_rate: Infinity,
+        avg_detection_latency_minutes: Infinity,
+        changes_never_detected: Infinity,
+        detection_efficiency: 0,
+        navigation_efficiency: 0,
+        normalized_recall: 0,
+      };
+      for (const s of strategyNames) {
+        const r = results[s];
+        if (r._status === 'error') continue;
+        best.change_recall = Math.max(best.change_recall, r.change_recall || 0);
+        best.navigation_precision = Math.max(best.navigation_precision, r.navigation_precision || 0);
+        best.scene_change_accuracy = Math.max(best.scene_change_accuracy, r.scene_change_accuracy || 0);
+        best.activity_change_accuracy = Math.max(best.activity_change_accuracy, r.activity_change_accuracy || 0);
+        best.event_timestep_rate = Math.max(best.event_timestep_rate, r.event_timestep_rate || 0);
+        best.cross_room_miss_rate = Math.min(best.cross_room_miss_rate, r.cross_room_miss_rate !== undefined ? r.cross_room_miss_rate : Infinity);
+        best.avg_detection_latency_minutes = Math.min(best.avg_detection_latency_minutes, r.avg_detection_latency_minutes !== undefined ? r.avg_detection_latency_minutes : Infinity);
+        best.changes_never_detected = Math.min(best.changes_never_detected, r.changes_never_detected !== undefined ? r.changes_never_detected : Infinity);
+        best.detection_efficiency = Math.max(best.detection_efficiency, r.detection_efficiency || 0);
+        best.navigation_efficiency = Math.max(best.navigation_efficiency, r.navigation_efficiency || 0);
+        best.normalized_recall = Math.max(best.normalized_recall, r.normalized_recall || 0);
+        best.robot_memory_accuracy = Math.max(best.robot_memory_accuracy || 0, r.robot_memory_accuracy || 0);
+      }
+      // Fallback if no valid results
+      if (best.cross_room_miss_rate === Infinity) best.cross_room_miss_rate = 0;
+      if (best.avg_detection_latency_minutes === Infinity) best.avg_detection_latency_minutes = 0;
+      if (best.changes_never_detected === Infinity) best.changes_never_detected = 0;
+
+      function pctOfBest(val, bestVal, higherIsBetter = true) {
+        if (bestVal === 0 || bestVal === Infinity) return '—';
+        const ratio = higherIsBetter ? (val / bestVal) : (bestVal / val);
+        if (!isFinite(ratio) || ratio < 0) return '—';
+        return (ratio * 100).toFixed(0) + '%';
+      }
+      function effBadge(val, bestVal, higherIsBetter = true) {
+        const pct = pctOfBest(val, bestVal, higherIsBetter);
+        if (pct === '—') return '<span class="text-muted">—</span>';
+        const num = parseInt(pct, 10);
+        let color = '#dc3545';
+        if (num >= 90) color = '#198754';
+        else if (num >= 70) color = '#0d6efd';
+        else if (num >= 50) color = '#fd7e14';
+        return `<span style="color:${color};font-weight:700;">${pct}</span>`;
+      }
+
+      const rows = strategyNames.map(s => {
+        const r = results[s];
+        const actAcc = r.activity_change_accuracy !== undefined ? (r.activity_change_accuracy * 100).toFixed(1) + '%' : '—';
+        const totalChangedScenes = r.scene_change_tp + r.scene_change_fn;
+        const totalUnchangedScenes = r.scene_change_tn + r.scene_change_fp;
+        const changedRecall = totalChangedScenes > 0 ? (r.scene_change_tp / totalChangedScenes * 100).toFixed(1) + '%' : '—';
+        const unchangedRecall = totalUnchangedScenes > 0 ? (r.scene_change_tn / totalUnchangedScenes * 100).toFixed(1) + '%' : '—';
+        const falseAlarmRate = totalUnchangedScenes > 0 ? (r.scene_change_fp / totalUnchangedScenes * 100).toFixed(1) + '%' : '—';
+        const missRate = totalChangedScenes > 0 ? (r.scene_change_fn / totalChangedScenes * 100).toFixed(1) + '%' : '—';
+        const crossMissRate = (r.cross_room_miss_rate * 100).toFixed(1) + '%';
+        const avgLat = r.avg_detection_latency_minutes !== undefined ? r.avg_detection_latency_minutes.toFixed(1) + 'm' : '—';
+        const medLat = r.median_detection_latency_minutes !== undefined ? r.median_detection_latency_minutes.toFixed(1) + 'm' : '—';
+        const neverDet = r.changes_never_detected !== undefined ? r.changes_never_detected : '—';
+        const events = r.event_timesteps_caught !== undefined ? r.event_timesteps_caught : '—';
+        const totalEvents = r.total_event_timesteps !== undefined ? r.total_event_timesteps : '—';
+        return `
+          <tr class="${r._status === 'error' ? 'table-danger' : ''}">
+            <td>
+              <strong>${escapeHtml(s)}</strong>
+              ${r._status === 'error' ? `<span class="badge bg-danger ms-1" title="${escapeHtml(r._error_msg || 'Strategy encountered an error')}">⚠️ ${r._error_type === 'timeout' ? 'TIMEOUT' : 'ERROR'}</span>` : ''}
+            </td>
+            <td title="Changes detected / Total changed scenes visited">${r.scene_change_tp} / ${totalChangedScenes}</td>
+            <td title="Recall = correctly detected changes">${changedRecall}</td>
+            <td title="Specificity = correctly detected unchanged scenes">${unchangedRecall}</td>
+            <td title="False alarms on unchanged scenes">${falseAlarmRate}</td>
+            <td title="Missed changes">${missRate}</td>
+            <td title="Event timesteps caught / total (max 1 per timestep)">${events} / ${totalEvents}</td>
+            <td title="Robot in unchanged room while changes happen elsewhere">${crossMissRate}</td>
+            <td title="Avg minutes from change to next visit">${avgLat}</td>
+            <td title="Median minutes from change to next visit">${medLat}</td>
+            <td title="Changes robot never visited after">${neverDet}</td>
+            <td title="Detected immediately (latency = 0)">${r.detection_latency_histogram?.['T=0'] || 0}</td>
+            <td title="Detected at T+1 latency">${r.detection_latency_histogram?.['T+1'] || 0}</td>
+            <td title="Detected at T+3 latency">${r.detection_latency_histogram?.['T+3'] || 0}</td>
+            <td title="Detected at T+5 latency">${r.detection_latency_histogram?.['T+5'] || 0}</td>
+            <td title="Detected at T+10 latency">${r.detection_latency_histogram?.['T+10'] || 0}</td>
+            <td title="Detected at T+25 latency">${r.detection_latency_histogram?.['T+25'] || 0}</td>
+            <td title="Detected at T+50 latency">${r.detection_latency_histogram?.['T+50'] || 0}</td>
+            <td>${(r.change_recall * 100).toFixed(1)}% <span class="text-muted" style="font-size:10px;">${effBadge(r.change_recall, theoreticalMax, true)}</span></td>
+            <td title="Path max catchable / Theoretical max">${r.path_max_changes !== undefined ? r.path_max_changes : '—'} / ${r.theoretical_max_changes !== undefined ? r.theoretical_max_changes : '—'}</td>
+            <td title="Observed / Path max (detection quality)">${r.detection_efficiency !== undefined ? (r.detection_efficiency * 100).toFixed(1) + '%' : '—'}</td>
+            <td title="Path max / Theoretical max (navigation quality)">${r.navigation_efficiency !== undefined ? (r.navigation_efficiency * 100).toFixed(1) + '%' : '—'}</td>
+            <td title="Recall / Theoretical max recall">${r.normalized_recall !== undefined ? (r.normalized_recall * 100).toFixed(1) + '%' : '—'}</td>
+            <td>${r.no_change_accuracy !== undefined ? (r.no_change_accuracy * 100).toFixed(1) + '%' : '—'}</td>
+            <td>${r.change_accuracy !== undefined ? (r.change_accuracy * 100).toFixed(1) + '%' : '—'}</td>
+            <td>${r.minor_recall !== undefined ? (r.minor_recall * 100).toFixed(1) + '%' : '—'}</td>
+            <td>${r.major_recall !== undefined ? (r.major_recall * 100).toFixed(1) + '%' : '—'}</td>
+            <td>${(r.scene_change_accuracy * 100).toFixed(1)}% <span class="text-muted" style="font-size:10px;">${effBadge(r.scene_change_accuracy, best.scene_change_accuracy, true)}</span></td>
+            <td>${r.robot_memory_accuracy !== undefined ? (r.robot_memory_accuracy * 100).toFixed(1) + '%' : '—'} <span class="text-muted" style="font-size:10px;">${effBadge(r.robot_memory_accuracy || 0, best.robot_memory_accuracy, true)}</span></td>
+            <td>${actAcc} <span class="text-muted" style="font-size:10px;">${effBadge(r.activity_change_accuracy || 0, best.activity_change_accuracy, true)}</span></td>
+            <td>${(r.navigation_precision * 100).toFixed(1)}% <span class="text-muted" style="font-size:10px;">${effBadge(r.navigation_precision, best.navigation_precision, true)}</span></td>
+            <td>${r.total_visits}</td>
+            <td>${r.vlm_calls_made || 0}</td>
+            <td>${r.elapsed_seconds}s</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Efficiency table rows
+      const effRows = strategyNames.map(s => {
+        const r = results[s];
+        if (r._status === 'error') {
+          return `<tr class="table-danger"><td><strong>${escapeHtml(s)}</strong></td><td colspan="10" class="text-muted">Error — no metrics</td></tr>`;
+        }
+        return `
+          <tr>
+            <td><strong>${escapeHtml(s)}</strong></td>
+            <td title="Change recall vs theoretical maximum (${(theoreticalMax*100).toFixed(1)}%)">${effBadge(r.change_recall, theoreticalMax, true)}</td>
+            <td title="Detection quality = observed / path max">${effBadge(r.detection_efficiency || 0, best.detection_efficiency, true)}</td>
+            <td title="Navigation quality = path max / theoretical max">${effBadge(r.navigation_efficiency || 0, best.navigation_efficiency, true)}</td>
+            <td title="Normalized recall = recall / theoretical max">${effBadge(r.normalized_recall || 0, best.normalized_recall, true)}</td>
+            <td title="Scene-change detection accuracy vs best selected">${effBadge(r.scene_change_accuracy, best.scene_change_accuracy, true)}</td>
+            <td title="Activity-change accuracy vs best selected">${effBadge(r.activity_change_accuracy || 0, best.activity_change_accuracy, true)}</td>
+            <td title="Navigation precision vs best selected">${effBadge(r.navigation_precision, best.navigation_precision, true)}</td>
+            <td title="Event timestep rate vs best selected">${effBadge(r.event_timestep_rate || 0, best.event_timestep_rate, true)}</td>
+            <td title="Cross-room miss rate vs best selected (lower is better)">${effBadge(r.cross_room_miss_rate || 0, best.cross_room_miss_rate, false)}</td>
+            <td title="Avg detection latency vs best selected (lower is better)">${effBadge(r.avg_detection_latency_minutes || 0, best.avg_detection_latency_minutes, false)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Fetch GT matrix and build strategy traces from accumulated steps
+      let gtMatrix = null;
+      let matrixHtml = '';
+      try {
+        gtMatrix = await fetchGtMatrix();
+        matrixHtml = renderChangeMatrix(gtMatrix, window._stepTraces);
+      } catch (e) {
+        console.warn('Failed to render change matrix:', e);
+        matrixHtml = '<div class="muted">Change matrix unavailable.</div>';
+      }
+
+      const savedToBanner = savedTo
+        ? `<div class="alert alert-info py-2 px-3 mb-3" style="font-size:12px;"><strong>💾 Saved:</strong> Results written to <code>${escapeHtml(savedTo.split('/').pop() || savedTo)}</code></div>`
+        : '';
+
+      const summaryHtml = `
+        <h6 class="mb-3 mt-4">Results Summary</h6>
+        ${savedToBanner}
+        <div class="table-responsive">
+          <table class="table table-striped result-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th title="Detected / Total changed scenes">Detected / Total Δ</th>
+                <th title="Recall = TP / (TP+FN)">Δ Recall</th>
+                <th title="Specificity = TN / (TN+FP)">∼Δ Recall</th>
+                <th title="FP / (FP+TN)">False Alarm</th>
+                <th title="FN / (TP+FN)">Miss Rate</th>
+                <th title="Event timesteps caught / total (max 1 per timestep)">Events</th>
+                <th title="Robot in unchanged room while changes happen elsewhere">Cross-Room Miss</th>
+                <th title="Avg minutes from change to next visit">Avg Latency</th>
+                <th title="Median minutes from change to next visit">Med Latency</th>
+                <th title="Changes robot never visited after">Never Det</th>
+                <th title="Detected immediately (latency = 0)">T=0</th>
+                <th title="Detected at T+1 latency">T+1</th>
+                <th title="Detected at T+3 latency">T+3</th>
+                <th title="Detected at T+5 latency">T+5</th>
+                <th title="Detected at T+10 latency">T+10</th>
+                <th title="Detected at T+25 latency">T+25</th>
+                <th title="Detected at T+50 latency">T+50</th>
+                <th>Chg Recall <span class="text-muted" style="font-size:9px;">(eff)</span></th>
+                <th title="Path max catchable / Theoretical max">Path / Theo</th>
+                <th title="Observed / Path max (detection quality)">Det Eff</th>
+                <th title="Path max / Theoretical max (navigation quality)">Nav Eff</th>
+                <th title="Recall / Theoretical max recall">Norm Rec</th>
+                <th>No-Chg Acc</th>
+                <th>Chg Det Acc</th>
+                <th>Minor Rec</th>
+                <th>Major Rec</th>
+                <th>Chg Acc <span class="text-muted" style="font-size:9px;">(eff)</span></th>
+                <th title="Accuracy relative to robot's own memory (fair comparison)">Robot Acc <span class="text-muted" style="font-size:9px;">(fair)</span></th>
+                <th>Act Acc <span class="text-muted" style="font-size:9px;">(eff)</span></th>
+                <th>Nav Prec <span class="text-muted" style="font-size:9px;">(eff)</span></th>
+                <th>Visits</th>
+                <th>VLM</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+
+        <div class="alert alert-light border mt-3" style="font-size:12px;">
+          <strong>Best possible in this selection:</strong>
+          Theoretical max recall = <strong>${(theoreticalMax * 100).toFixed(1)}%</strong> |
+          Best nav precision = <strong>${(best.navigation_precision * 100).toFixed(1)}%</strong> |
+          Best detection accuracy = <strong>${(best.scene_change_accuracy * 100).toFixed(1)}%</strong> |
+          Best activity accuracy = <strong>${(best.activity_change_accuracy * 100).toFixed(1)}%</strong> |
+          Best event rate = <strong>${(best.event_timestep_rate * 100).toFixed(1)}%</strong> |
+          Best detection efficiency = <strong>${(best.detection_efficiency * 100).toFixed(1)}%</strong> |
+          Best navigation efficiency = <strong>${(best.navigation_efficiency * 100).toFixed(1)}%</strong>
+        </div>
+
+        <h6 class="mb-2 mt-4">Efficiency vs Best Possible</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped result-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th title="Recall vs theoretical max">Recall Eff</th>
+                <th title="Detection quality = observed / path max">Det Eff</th>
+                <th title="Navigation quality = path max / theoretical max">Nav Eff</th>
+                <th title="Normalized recall = recall / theoretical max">Norm Rec</th>
+                <th title="Detection accuracy vs best">Det Acc Eff</th>
+                <th title="Activity accuracy vs best">Act Eff</th>
+                <th title="Navigation precision vs best">Nav Prec Eff</th>
+                <th title="Event capture vs best">Evt Eff</th>
+                <th title="Cross-room misses vs best (lower is better)">Miss Eff</th>
+                <th title="Latency vs best (lower is better)">Lat Eff</th>
+              </tr>
+            </thead>
+            <tbody>${effRows}</tbody>
+          </table>
+        </div>
+        <hr class="my-4">
+        ${matrixHtml}
+      `;
+
+      const cardsHtml = strategyNames.map(s => {
+        const r = results[s];
+        const totalChanged = r.scene_change_tp + r.scene_change_fn;
+        const totalUnchanged = r.scene_change_tn + r.scene_change_fp;
+        const changedRecall = totalChanged > 0 ? (r.scene_change_tp / totalChanged * 100).toFixed(1) : '—';
+        const unchangedRecall = totalUnchanged > 0 ? (r.scene_change_tn / totalUnchanged * 100).toFixed(1) : '—';
+        const falseAlarm = totalUnchanged > 0 ? (r.scene_change_fp / totalUnchanged * 100).toFixed(1) : '—';
+        const missRate = totalChanged > 0 ? (r.scene_change_fn / totalChanged * 100).toFixed(1) : '—';
+        const confusionHtml = (r.scene_change_tp + r.scene_change_tn + r.scene_change_fp + r.scene_change_fn) > 0
+          ? renderConfusion(r.scene_change_tp, r.scene_change_tn, r.scene_change_fp, r.scene_change_fn)
+          : '<div class="muted mt-2">No scene-change detection (baseline)</div>';
+        const actConfHtml = (r.activity_change_tp + r.activity_change_tn + r.activity_change_fp + r.activity_change_fn) > 0
+          ? renderConfusion(r.activity_change_tp, r.activity_change_tn, r.activity_change_fp, r.activity_change_fn, 'Activity')
+          : '';
+        return `
+          <div class="sim-col">
+            <div class="sim-col-header">${escapeHtml(s)}</div>
+            <div class="sim-col-body">
+              <div class="mb-2">
+                <div class="muted">Nav: ${(r.navigation_precision * 100).toFixed(1)}% | Visits: ${r.total_visits}</div>
+              </div>
+              <div class="mini-metric mb-2">
+                <div><b>Changed scenes:</b> <span class="metric-good">${r.scene_change_tp} detected</span> / ${totalChanged} total <span class="text-muted">(${changedRecall}% recall)</span></div>
+                <div><b>Unchanged scenes:</b> <span class="metric-good">${r.scene_change_tn} correct</span> / ${totalUnchanged} total <span class="text-muted">(${unchangedRecall}% specificity)</span></div>
+                <div><b>False alarms:</b> <span class="metric-bad">${r.scene_change_fp}</span> <span class="text-muted">(${falseAlarm}%)</span> | <b>Missed:</b> <span class="metric-bad">${r.scene_change_fn}</span> <span class="text-muted">(${missRate}%)</span></div>
+                <div><b>No-change accuracy:</b> ${r.no_change_accuracy !== undefined ? (r.no_change_accuracy * 100).toFixed(1) : '—'}% | <b>Change accuracy:</b> ${r.change_accuracy !== undefined ? (r.change_accuracy * 100).toFixed(1) : '—'}%</div>
+                <div><b>Minor recall:</b> ${r.minor_recall !== undefined ? (r.minor_recall * 100).toFixed(1) : '—'}% | <b>Major recall:</b> ${r.major_recall !== undefined ? (r.major_recall * 100).toFixed(1) : '—'}%</div>
+                <div><b>Event timesteps:</b> <span class="metric-good">${r.event_timesteps_caught || 0}</span> caught / ${r.total_event_timesteps || 0} total <span class="text-muted">(${(r.event_timestep_rate * 100).toFixed(1)}%)</span></div>
+                <div><b>Cross-room misses:</b> <span class="metric-bad">${r.cross_room_misses || 0}</span> <span class="text-muted">(${(r.cross_room_miss_rate * 100).toFixed(1)}% of timesteps)</span></div>
+                <div><b>Detection latency:</b> avg ${r.avg_detection_latency_minutes !== undefined ? r.avg_detection_latency_minutes.toFixed(1) : '—'}m (${r.avg_detection_latency_steps !== undefined ? r.avg_detection_latency_steps.toFixed(1) : '—'} steps) / med ${r.median_detection_latency_minutes !== undefined ? r.median_detection_latency_minutes.toFixed(1) : '—'}m (${r.median_detection_latency_steps !== undefined ? r.median_detection_latency_steps : '—'} steps) / max ${r.max_detection_latency_minutes !== undefined ? r.max_detection_latency_minutes.toFixed(1) : '—'}m (${r.max_detection_latency_steps !== undefined ? r.max_detection_latency_steps : '—'} steps)</div>
+                <div><b>All GT changes:</b> ${r.total_changes || 0} | <b>Catchable:</b> ${r.catchable_changes || 0} | <b>Detected among catchable:</b> <span class="metric-good">${r.detected_among_catchable !== undefined ? (r.detected_among_catchable * 100).toFixed(1) : '—'}%</span></div>
+                <div><b>Absent (never visited):</b> <span class="metric-bad">${r.absent_changes || 0}</span> | <b>Blind (visited, missed):</b> <span class="metric-bad">${r.blind_changes || 0}</span> | <b>Immediately (T=0):</b> <span class="metric-good">${r.changes_detected_immediately || 0}</span></div>
+                <hr class="my-1">
+                <div><b>Recall efficiency:</b> ${effBadge(r.change_recall, theoreticalMax, true)} of theoretical max (${(theoreticalMax*100).toFixed(1)}%)</div>
+                <div><b>Nav precision efficiency:</b> ${effBadge(r.navigation_precision, best.navigation_precision, true)} of best (${(best.navigation_precision*100).toFixed(1)}%)</div>
+                <div><b>Detection efficiency:</b> ${effBadge(r.scene_change_accuracy, best.scene_change_accuracy, true)} of best</div>
+                <div><b>Activity efficiency:</b> ${effBadge(r.activity_change_accuracy || 0, best.activity_change_accuracy, true)} of best</div>
+                <div><b>Event efficiency:</b> ${effBadge(r.event_timestep_rate || 0, best.event_timestep_rate, true)} of best</div>
+              </div>
+              ${confusionHtml}
+              ${actConfHtml}
+              <hr class="my-2">
+              ${gtMatrix ? renderStrategyMatrix(gtMatrix, window._stepTraces[s], s) : '<div class="muted">Change matrix unavailable.</div>'}
+              ${renderLatencyHistogram(r.detection_latency_histogram)}
+              ${r.conditional_latency_histogram && Object.keys(r.conditional_latency_histogram).length > 0 ? renderLatencyHistogram(r.conditional_latency_histogram, 'Conditional (Detected Only)') : ''}
+              ${r.visit_opportunity_histogram && Object.keys(r.visit_opportunity_histogram).length > 0 ? renderVisitOpportunityHistogram(r.visit_opportunity_histogram) : ''}
+              ${renderPerRoomLatency(r.per_room_latency)}
+              ${renderCumulativeCurve(r.cumulative_detection_curve)}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const finalDiv = document.createElement('div');
+      finalDiv.innerHTML = summaryHtml + `
+        <h6 class="mb-3 mt-4">Per-Strategy Detail</h6>
+        <div class="sim-grid">${cardsHtml}</div>
+      `;
+      // Insert final results AFTER the live metrics panel so live metrics stay at the top
+      const livePanel = container.querySelector('#liveMetricsPanel');
+      if (livePanel && livePanel.nextSibling) {
+        container.insertBefore(finalDiv, livePanel.nextSibling);
+      } else if (livePanel) {
+        container.appendChild(finalDiv);
+      } else {
+        container.insertBefore(finalDiv, container.firstChild);
+      }
+      // Also update the live metrics panel so charts remain visible after the run
+      updateLiveMetricsPanel(results);
+    }
+  </script>
+</body>
+</html>

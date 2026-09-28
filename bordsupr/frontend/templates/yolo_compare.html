@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YOLO Model Comparison</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --line: #d4dce8;
+      --ink: #1f2a37;
+      --muted: #637182;
+      --accent: #0b6e4f;
+    }
+    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; color: var(--ink); }
+    .workspace { padding: 16px; display: grid; grid-template-columns: 380px 1fr; gap: 16px; min-height: 0; }
+    .panel { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+    .panel-head { padding: 14px 16px; border-bottom: 1px solid var(--line); background: #fbfcff; }
+    .panel-body { padding: 16px; overflow: auto; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; background: #f6f8fb; border: 1px solid #e1e7ef; border-radius: 10px; padding: 12px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    .stat-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fbfcff; }
+    .img-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fff; margin-bottom: 12px; }
+    .img-card img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+    .chip { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; margin: 2px 4px 2px 0; font-size: 12px; color: #243447; background: #f6f9fc; }
+    .overlap-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .overlap-table th, .overlap-table td { border: 1px solid var(--line); padding: 6px 10px; text-align: center; }
+    .overlap-table th { background: #f7fafe; }
+    @media (max-width: 980px) { .workspace { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  {% include "_topnav.html" %}
+
+  <div class="workspace">
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">YOLO Comparison</h5>
+        <div class="muted">Run multiple YOLO models on a frame directory and compare detections.</div>
+      </div>
+      <div class="panel-body">
+        <label for="frameDirInput" class="form-label">Absolute frames directory</label>
+        <input id="frameDirInput" class="form-control" type="text" value="{{ video_publisher_default_frame_dir }}" />
+
+        <label for="modelPathsInput" class="form-label mt-3">Model paths (one per line)</label>
+        <textarea id="modelPathsInput" class="form-control" rows="7"></textarea>
+        <div class="muted">Absolute paths to .pt files inside the web container.</div>
+
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-outline-secondary btn-sm" onclick="refreshModels()">Refresh Model List</button>
+        </div>
+
+        <label for="confThresholdInput" class="form-label mt-3">Confidence threshold</label>
+        <input id="confThresholdInput" class="form-control" type="number" min="0.01" max="1.0" step="0.01" value="0.25" />
+
+        <label for="strideInput" class="form-label mt-3">Frame stride</label>
+        <input id="strideInput" class="form-control" type="number" min="1" max="100" value="5" />
+
+        <label for="maxImagesInput" class="form-label mt-3">Max images</label>
+        <input id="maxImagesInput" class="form-control" type="number" min="1" max="50" value="20" />
+
+        <label for="iouThresholdInput" class="form-label mt-3">IoU overlap threshold</label>
+        <input id="iouThresholdInput" class="form-control" type="number" min="0.01" max="1.0" step="0.01" value="0.5" />
+
+        <div class="d-grid gap-2 mt-3">
+          <button class="btn btn-primary" onclick="runComparison()">Run Comparison</button>
+        </div>
+
+        <hr>
+        <div id="statusBlock" class="muted">No comparison run yet.</div>
+
+        <div id="metricsBlock" class="mt-3" style="display:none;">
+          <h6 class="mb-2">Metrics</h6>
+          <div id="countsGrid" class="stat-grid mb-3"></div>
+          <div class="mb-2"><strong>Overlap Matrix</strong></div>
+          <div class="table-responsive">
+            <table id="overlapTable" class="overlap-table mb-3"></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h5 class="mb-1">Results</h5>
+        <div class="muted">Annotated images and per-image breakdowns.</div>
+      </div>
+      <div class="panel-body" id="resultsBlock">
+        <div class="muted">Run a comparison to see results.</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function fetchJson(url, options) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    }
+
+    async function refreshModels() {
+      const textarea = document.getElementById('modelPathsInput');
+      try {
+        const data = await fetchJson('/api/yolo_models');
+        const paths = data.models.map(m => m.path);
+        textarea.value = paths.join('\n');
+      } catch (err) {
+        // fallback defaults
+        textarea.value = [
+          '/workspace/models/yolov8n.pt',
+          '/workspace/models/yolov8n-seg.pt',
+          '/workspace/models/yolov8s.pt',
+          '/workspace/models/yolo11n.pt',
+          '/workspace/models/yolo11n-seg.pt',
+          '/workspace/models/yolo11s.pt',
+          '/workspace/models/yolo11s-seg.pt',
+        ].join('\n');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', refreshModels);
+
+    async function runComparison() {
+      const statusEl = document.getElementById('statusBlock');
+      const resultsEl = document.getElementById('resultsBlock');
+      const metricsEl = document.getElementById('metricsBlock');
+      statusEl.textContent = 'Running inference…';
+      resultsEl.innerHTML = '<div class="muted">Loading…</div>';
+      metricsEl.style.display = 'none';
+
+      const modelPathsRaw = document.getElementById('modelPathsInput').value;
+      const model_paths = modelPathsRaw.split('\n').map(s => s.trim()).filter(Boolean);
+
+      const payload = {
+        frame_dir: document.getElementById('frameDirInput').value.trim(),
+        model_paths,
+        conf_threshold: Number(document.getElementById('confThresholdInput').value),
+        image_stride: Number(document.getElementById('strideInput').value),
+        max_images: Number(document.getElementById('maxImagesInput').value),
+        iou_threshold: Number(document.getElementById('iouThresholdInput').value),
+      };
+
+      try {
+        const data = await fetchJson('/api/yolo_compare/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        statusEl.innerHTML = `Processed <strong>${data.processed_images}</strong> images from <code>${escapeHtml(data.frame_dir)}</code>.`;
+        metricsEl.style.display = '';
+
+        // Counts grid
+        const countsGrid = document.getElementById('countsGrid');
+        countsGrid.innerHTML = data.model_names.map(name => `
+          <div class="stat-card">
+            <div class="muted">${escapeHtml(name)}</div>
+            <div><strong>${data.per_model_counts[name] ?? 0}</strong> total</div>
+            <div class="muted">${data.unique_detections[name] ?? 0} unique</div>
+          </div>
+        `).join('');
+
+        // Overlap table
+        const table = document.getElementById('overlapTable');
+        const names = data.model_names;
+        let thead = '<tr><th></th>' + names.map(n => `<th>${escapeHtml(n)}</th>`).join('') + '</tr>';
+        let tbody = names.map(a => {
+          let cells = names.map(b => {
+            const val = data.overlap_matrix[a]?.[b] ?? 0;
+            const isDiag = a === b;
+            return `<td style="${isDiag ? 'background:#f0f0f0;color:#999;' : ''}">${val}</td>`;
+          }).join('');
+          return `<tr><th style="text-align:left;">${escapeHtml(a)}</th>${cells}</tr>`;
+        }).join('');
+        table.innerHTML = '<thead>' + thead + '</thead><tbody>' + tbody + '</tbody>';
+
+        // Image results
+        resultsEl.innerHTML = data.image_results.map(img => {
+          const perModel = data.model_names.map(name => {
+            const count = img.model_results[name]?.count ?? 0;
+            return `<span class="chip">${escapeHtml(name)}: ${count}</span>`;
+          }).join('');
+
+          let overlapTableHtml = '';
+          if (img.overlap_pairs && img.overlap_pairs.length > 0) {
+            const pairRows = img.overlap_pairs.map(p => `
+              <tr>
+                <td>${escapeHtml(p.model_a)}</td>
+                <td>${escapeHtml(p.class_a)}</td>
+                <td>${p.score_a}</td>
+                <td>[${p.bbox_a.map(v => Math.round(v)).join(', ')}]</td>
+                <td>${escapeHtml(p.model_b)}</td>
+                <td>${escapeHtml(p.class_b)}</td>
+                <td>${p.score_b}</td>
+                <td>[${p.bbox_b.map(v => Math.round(v)).join(', ')}]</td>
+                <td>${p.iou}</td>
+              </tr>
+            `).join('');
+            overlapTableHtml = `
+              <div class="mt-3">
+                <div class="mb-1"><strong>Overlapping Objects (IoU ≥ 0.10)</strong></div>
+                <div class="table-responsive">
+                  <table class="overlap-table">
+                    <thead>
+                      <tr>
+                        <th>Model A</th><th>Class</th><th>Score</th><th>BBox</th>
+                        <th>Model B</th><th>Class</th><th>Score</th><th>BBox</th>
+                        <th>IoU</th>
+                      </tr>
+                    </thead>
+                    <tbody>${pairRows}</tbody>
+                  </table>
+                </div>
+              </div>
+            `;
+          }
+
+          return `
+            <div class="img-card">
+              <div class="mb-2"><strong>${escapeHtml(img.image_name)}</strong></div>
+              <img src="data:image/jpeg;base64,${img.image_b64}" alt="${escapeHtml(img.image_name)}" />
+              <div class="mt-2">${perModel}</div>
+              ${overlapTableHtml}
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        statusEl.innerHTML = `<span class="text-danger fw-semibold">Error: ${escapeHtml(String(err))}</span>`;
+        resultsEl.innerHTML = '<div class="muted">No results.</div>';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg17-trixie
+    container_name: pgvector-db
+    platform: linux/amd64
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bordsupr
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  pgdata:
+
+# docker compose up -d
+
+# Remove all
+# docker compose down -v
+# docker rm -f pgvector-db
+# docker image rm pgvector/pgvector:pg17
+# docker image rm pgvector/pgvector:0.8.1-pg17-trixie
+
+# inside docker
+# psql -U postgres -d bordsupr
+# list tables: \dt
+# list columns: \d objects
