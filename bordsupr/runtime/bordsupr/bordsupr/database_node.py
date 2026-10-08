@@ -5333,7 +5333,7 @@ class DatabaseNode(Node):
                 # Face-identity guard (persons): do NOT centroid-merge two person
                 # clusters whose face observations prove they are DIFFERENT people.
                 # OSNet body centroids of distinct people can exceed the merge
-                # threshold (offline TBBT: cross-person centroids reach ~0.97), so
+                # threshold (offline: cross-person centroids reach ~0.97), so
                 # without this guard the centroid pass re-merges clean per-character
                 # clusters back into a sink. Faces (ArcFace) are authoritative.
                 if self._person_clusters_face_conflict(keep_id, drop_id, class_a):

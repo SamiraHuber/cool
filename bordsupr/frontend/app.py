@@ -7436,12 +7436,8 @@ def _resolve_dataset_root(dataset_root: str) -> Path:
     raw = str(dataset_root or "").strip()
     translations = [
         (
-            "/opt/youownit/bordsupr/runtime",
-            "/opt/youownit_runtime",
-        ),
-        (
             VIDEO_PUBLISHER_HOST_RUNTIME_ROOT,
-            "/opt/youownit_runtime",
+            "/opt/bordsupr_runtime",
         ),
         (
             VIDEO_PUBLISHER_HOST_RUNTIME_ROOT,
@@ -7470,8 +7466,7 @@ def _dataset_root_candidates(dataset_root: str) -> list[str]:
     raw = str(dataset_root or "").strip()
     candidates = [raw]
     for source_prefix, dest_prefix in (
-        ("/opt/youownit/bordsupr/runtime", "/opt/youownit_runtime"),
-        (VIDEO_PUBLISHER_HOST_RUNTIME_ROOT, "/opt/youownit_runtime"),
+        (VIDEO_PUBLISHER_HOST_RUNTIME_ROOT, "/opt/bordsupr_runtime"),
         (VIDEO_PUBLISHER_HOST_RUNTIME_ROOT, "/workspace/src"),
     ):
         if raw.startswith(source_prefix):
@@ -12482,7 +12477,7 @@ def build_cluster_testset(req: ClusterTestsetBuildRequest):
             detail={
                 "message": f"Dataset root not found: {dataset_root}",
                 "tried": _dataset_root_candidates(req.dataset_root),
-                "hint": "The path must exist inside the web container. Runtime-style /opt/youownit/bordsupr/runtime paths are mapped to /opt/youownit_runtime when the web container has the runtime volume mounted.",
+                "hint": "The path must exist inside the web container. Host paths under bordsupr/runtime are mapped to /opt/bordsupr_runtime when the web container has the runtime volume mounted.",
             },
         )
     images = _discover_dataset_images(dataset_root, split=req.split, recursive=req.recursive)

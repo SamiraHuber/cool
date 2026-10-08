@@ -5,7 +5,7 @@ Runs InsightFace (buffalo_l / ArcFace) on each person observation's stored
 cropped_image and stores the best face's 512-d embedding + detection score into a
 staging table `person_face_embeddings`. Resumable: skips obs already present.
 
-Usage (in samira_bordsupr):
+Usage (in bordsupr):
     python3 /tmp/gen_face_embeddings.py [--limit N] [--det-size 320]
 """
 
